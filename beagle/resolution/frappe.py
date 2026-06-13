@@ -13,6 +13,7 @@ from typing import Optional
 from beagle.database.repository import Repository
 from beagle.models import Edge, Entity
 from beagle.resolution.calls import RESOLVER_VERSION
+from beagle.resolution.operations import operation_edges
 from beagle.resolution.symbols import SymbolTable
 
 _CLASS_KINDS = ("class", "test_class")
@@ -44,12 +45,76 @@ def frappe_edges(repo: Repository, table: SymbolTable) -> list[Edge]:
     edges: list[Edge] = []
     edges += _has_field_edges(table)
     edges += _field_target_edges(repo, by_name)
-    edges += _controller_and_test_edges(repo, by_name)
+    controller_edges, class_to_doctype = _controller_and_test_edges(repo, by_name)
+    edges += controller_edges
     edges += _orm_edges(repo, by_name)
     edges += _endpoint_edges(repo)
     edges += _enqueue_edges(repo, table)
     edges += _hook_edges(repo, table, by_name)
+    edges += _field_write_edges(repo, table, by_name, class_to_doctype)
+    edges += operation_edges(repo, table, by_name, class_to_doctype)
     return edges
+
+
+def field_id_from_doctype(doctype_id: str, field: str) -> str:
+    rest = doctype_id[len("doctype://"):]
+    return f"doctype-field://{rest}#{field}"
+
+
+def _field_write_edges(repo, table, by_name, class_to_doctype) -> list[Edge]:
+    edges: list[Edge] = []
+    edges += _setvalue_field_edges(repo, table, by_name)
+    edges += _self_field_edges(repo, table, class_to_doctype)
+    return edges
+
+
+def _setvalue_field_edges(repo, table, by_name) -> list[Edge]:
+    edges: list[Edge] = []
+    for obs in repo.observations_of_kind("call"):
+        if obs.data.get("dotted") != "frappe.db.set_value":
+            continue
+        args = obs.data.get("string_args") or []
+        if len(args) < 3 or not args[0] or not args[2]:
+            continue
+        doctype = by_name.get(args[0])
+        if not doctype:
+            continue
+        edges.append(_field_edge(obs, obs.subject, doctype, args[2], table))
+    return edges
+
+
+def _self_field_edges(repo, table, class_to_doctype) -> list[Edge]:
+    edges: list[Edge] = []
+    for obs in repo.observations_of_kind("assignment"):
+        target = obs.data.get("target_code") or ""
+        if not target.startswith("self."):
+            continue
+        field = target[5:]
+        if not field or "." in field or "[" in field:  # nested/subscript, not a direct field
+            continue
+        cls = table.class_of(obs.subject)
+        doctype = class_to_doctype.get(cls) if cls else None
+        if doctype:
+            edges.append(_field_edge(obs, obs.subject, doctype, field, table))
+    return edges
+
+
+def _field_edge(obs, source, doctype_id, field, table) -> Edge:
+    field_eid = field_id_from_doctype(doctype_id, field)
+    resolved = field_eid in table.entities
+    return Edge(
+        source_id=source,
+        relationship="WRITES_FIELD",
+        target_id=field_eid if resolved else None,
+        target_hint=field_eid,
+        confidence=0.9 if resolved else 0.3,
+        resolver="frappe-field-write" if resolved else "frappe-field-write-unconfirmed",
+        resolver_version=RESOLVER_VERSION,
+        owner_file=obs.owner_file,
+        source_range=obs.source_range,
+        observation_id=obs.id,
+        evidence={"field": field, "doctype": doctype_id},
+    )
 
 
 def _hook_edges(repo: Repository, table: SymbolTable, by_name: dict[str, str]) -> list[Edge]:
@@ -57,15 +122,38 @@ def _hook_edges(repo: Repository, table: SymbolTable, by_name: dict[str, str]) -
     for obs in repo.observations_of_kind("frappe_hook"):
         hook = obs.data.get("hook")
         handler = table.resolve_absolute(obs.data.get("handler") or "")
+        doctype = by_name.get(obs.data.get("doctype") or "")
         if hook == "doc_event":
-            edges.append(_hook_edge(obs, "INVOKES", by_name.get(obs.data.get("doctype") or ""),
-                                    handler, "frappe-doc-event"))
+            edges.append(_hook_edge(obs, "INVOKES", doctype, handler, "frappe-doc-event"))
         elif hook == "scheduler":
             edges.append(_hook_edge(obs, "INVOKES", obs.subject, handler, "frappe-scheduler"))
         elif hook == "override_class":
-            edges.append(_hook_edge(obs, "HAS_CONTROLLER", by_name.get(obs.data.get("doctype") or ""),
-                                    handler, "frappe-override-class"))
+            edges.append(_hook_edge(obs, "HAS_CONTROLLER", doctype, handler, "frappe-override-class"))
+        elif hook == "extend_class":
+            edges.append(_hook_edge(obs, "EXTENDS_CONTROLLER", doctype, handler, "frappe-extend-class"))
+        elif hook == "permission":
+            edges.append(_hook_edge(obs, "PERMISSION_CHECK", doctype, handler, "frappe-permission"))
+        elif hook == "override_method":
+            original = table.resolve_absolute(obs.data.get("original") or "")
+            edges.append(_override_method_edge(obs, handler, original))
     return edges
+
+
+def _override_method_edge(obs, override_id, original_id) -> Edge:
+    resolved = override_id is not None and original_id is not None
+    return Edge(
+        source_id=override_id or obs.subject,
+        relationship="OVERRIDES",
+        target_id=original_id,
+        target_hint=obs.data.get("original"),
+        confidence=0.9 if resolved else 0.0,
+        resolver="frappe-override-method" if resolved else "unresolved",
+        resolver_version=RESOLVER_VERSION,
+        owner_file=obs.owner_file,
+        source_range=obs.source_range,
+        observation_id=obs.id,
+        evidence={"override": obs.data.get("handler"), "original": obs.data.get("original")},
+    )
 
 
 def _hook_edge(obs, relationship, source, target, resolver) -> Edge:
@@ -186,13 +274,17 @@ def _dynamic_edge(obs) -> Edge:
     )
 
 
-def _controller_and_test_edges(repo: Repository, by_name: dict[str, str]) -> list[Edge]:
+def _controller_and_test_edges(
+    repo: Repository, by_name: dict[str, str]
+) -> tuple[list[Edge], dict[str, str]]:
     edges: list[Edge] = []
+    class_to_doctype: dict[str, str] = {}
     for obs in repo.observations_of_kind("frappe_controller"):
         dt_id = obs.subject
         controller = _pick_class(repo, obs.data["controller_relpath"],
                                  obs.data["class_name"], ("class",))
         if controller:
+            class_to_doctype[controller.id] = dt_id
             edges.append(_edge(dt_id, "HAS_CONTROLLER", controller.id,
                                controller.owner_file, 0.95, "frappe-controller", controller))
         test = _pick_class(repo, obs.data["test_relpath"],
@@ -200,7 +292,7 @@ def _controller_and_test_edges(repo: Repository, by_name: dict[str, str]) -> lis
         if test:
             edges.append(_edge(test.id, "TESTS", dt_id, test.owner_file,
                                0.9, "frappe-test", test))
-    return edges
+    return edges, class_to_doctype
 
 
 def _pick_class(

@@ -61,16 +61,16 @@ Stable qualified names and exact source ranges: [x].
 - [x] Associate controller modules and classes.
 - [x] Associate conventional test modules.
 
-## Stage 5: Frappe runtime semantics — MOSTLY DONE
+## Stage 5: Frappe runtime semantics — DONE
 
 Hooks:
 
 - [x] `doc_events`
 - [x] `scheduler_events`
 - [x] `override_doctype_class`
-- [ ] `extend_doctype_class`
-- [ ] `override_whitelisted_methods`
-- [ ] permission hooks (`has_permission`, `permission_query_conditions`)
+- [x] `extend_doctype_class` (EXTENDS_CONTROLLER)
+- [x] `override_whitelisted_methods` (OVERRIDES)
+- [x] permission hooks (`has_permission`, `permission_query_conditions`) (PERMISSION_CHECK)
 
 APIs:
 
@@ -99,8 +99,8 @@ APIs:
 - [x] `callees`
 - [x] `path`
 - [x] `uses-doctype`
-- [~] `reads-field` — DocType-granular (field-level access not yet extracted)
-- [~] `writes-field` — DocType-granular
+- [~] `reads-field` — DocType-granular (field-level reads not extracted)
+- [x] `writes-field` — field-level via WRITES_FIELD (set_value field arg + controller self.<field>)
 - [x] `tests`
 - [x] `impact`
 
@@ -161,3 +161,53 @@ Returns entities, inclusion reasons, confidence, paths, ranges, and excerpts: [x
 - [ ] intent classification, query expansion, retrieval planning, candidate
       ranking, concise explanations, shortening Mermaid labels.
 - The model must not create authoritative graph facts or diagram edges.
+
+## Design 08 — Frappe document lifecycle policy — DONE
+
+- [x] Add document-operation observations (reuse call obs + receiver resolution).
+- [x] Resolve receiver DocTypes (literal get_doc/new_doc + controller self).
+- [~] Detect docstatus transitions — action derived from operation method;
+      true draft↔submitted transitions need runtime state (reported, not guessed).
+- [x] Create versioned operation policies (FrappeLifecyclePolicy, pinned commit).
+- [~] Lifecycle-event entities — synthetic IDs generated at query time, not stored
+      rows (keeps the index to deterministic facts).
+- [x] Generate ordered events (policy.events_for) + operation edges.
+- [~] Detect operation overrides and `super()` continuation — override of an op
+      method is flagged "standard lifecycle conditional"; full super-trace is partial.
+- [x] Handle nested `db_set()` in discard (policy sequence).
+- [x] Model delete through `frappe.delete_doc`.
+- [x] Prevent lifecycle expansion for direct DB writes (set_value/db.delete).
+- [x] Prevent automatic child-row lifecycle expansion (negative-tested).
+- [~] Single/Virtual DocType handling — standard policy applies; virtual override
+      treated as conditional via the override note.
+- [x] Cycle and depth limits (trace).
+
+## Design 09 — Frappe event dispatch resolution — DONE
+
+- [x] Event nodes + differentiated dispatch categories (controller/exact/wildcard/runtime).
+- [x] Effective controller resolution.
+- [~] Overrides via installed-app order — multiple overrides preserved + marked
+      uncertain (app order unknown from repo alone), never silently picked.
+- [x] Extensions and MRO (extend_doctype_class mixins first).
+- [~] `super()` continuation across lifecycle methods — partial.
+- [x] Exact and wildcard `doc_events`.
+- [~] Hook declaration order — preserved; cross-app order marked unknown.
+- [x] Literal `run_method` (RUNS_EVENT).
+- [x] Runtime Notification/Webhook/Server Script channels (reported unknown).
+- [ ] Optional site-snapshot provider (deferred).
+- [x] Continue transitive calls/jobs/operations from handlers.
+- [x] Framework-cycle prevention.
+- [x] Render dispatch categories separately (Mermaid solid/dashed/dotted).
+
+CLI: `lifecycle`, `event-handlers`, `trace`, `explain --framework-events`.
+MCP: `event_handlers`, `lifecycle`, `trace`.
+
+## Design 10 — Lifecycle validation, versioning, benchmarks — PARTIAL
+
+- [x] Pinned framework source (commit in POLICY_META) + policy metadata.
+- [x] Policy adapter interface (LifecyclePolicy) with one Frappe adapter.
+- [x] Source verification of the key Document functions (done before coding).
+- [x] Synthetic fixture matrix essentials + critical negative tests
+      (no child lifecycle, db_set ≠ save, set_value ≠ operation, override uncertain).
+- [ ] Full 30+ manually-verified real-repo lifecycle gold cases with accuracy
+      gates — seeded/validated on press by hand; formal gold set not yet authored.

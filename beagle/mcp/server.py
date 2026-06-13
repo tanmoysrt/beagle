@@ -45,6 +45,9 @@ def build_server(workspace: Workspace) -> FastMCP:
     mcp.add_tool(tools.context, description="Compile an intent-shaped, budget-bounded context bundle.")
     mcp.add_tool(tools.investigate, description="Turn an issue into an evidence-backed map of relevant code.")
     mcp.add_tool(tools.explain_function, description="Explain a function; optional deterministic Mermaid flow.")
+    mcp.add_tool(tools.event_handlers, description="Resolve controller/doc_events/runtime handlers for a DocType event.")
+    mcp.add_tool(tools.lifecycle, description="Standard document lifecycle events and handlers for a DocType.")
+    mcp.add_tool(tools.trace, description="Trace operations, lifecycle events, and handlers from a function.")
     mcp.add_tool(tools.read_source, description="Exact source for an entity.")
     return mcp
 

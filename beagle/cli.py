@@ -241,8 +241,20 @@ def reads_field(field: str = typer.Argument(..., help="Field id or DocType.field
 
 @app.command(name="writes-field")
 def writes_field(field: str = typer.Argument(..., help="Field id or DocType.field name.")) -> None:
-    """List code writing the DocType that owns a field (doctype-granular)."""
-    _field_access(field, ("WRITES_DOCTYPE", "CREATES_DOCTYPE"))
+    """List code that writes a field (set_value or controller self.<field> =)."""
+    workspace = _open()
+    target = _resolve_field(workspace, field)
+    if target is None:
+        typer.echo(f"no field matches: {field}")
+        workspace.close()
+        return
+    edges = workspace.repo.edges_to(target.id, ("WRITES_FIELD",))
+    if not edges:
+        typer.echo("# no field-level writes found")
+    for e in edges:
+        typer.echo(f"  {_entity_label(workspace, e.source_id)}  "
+                   f"{e.owner_file}:{e.source_range.start_line}  ({e.confidence:.2f})")
+    workspace.close()
 
 
 def _field_access(ref: str, relationships: tuple[str, ...]) -> None:
@@ -253,7 +265,7 @@ def _field_access(ref: str, relationships: tuple[str, ...]) -> None:
         workspace.close()
         return
     doctype_id = field.extra.get("doctype_id")
-    typer.echo(f"# field-level access not yet tracked; showing DocType-level access to {doctype_id}")
+    typer.echo(f"# field-level reads not tracked; showing DocType-level access to {doctype_id}")
     for e in workspace.repo.edges_to(doctype_id, relationships):
         typer.echo(f"  {e.relationship}: {_entity_label(workspace, e.source_id)}  "
                    f"{e.owner_file}:{e.source_range.start_line}")
@@ -325,6 +337,8 @@ def explain(
     entity_id: str = typer.Argument(..., help="Function/method id or name."),
     mermaid: bool = typer.Option(False, "--mermaid", help="Include a Mermaid flowchart."),
     expand_calls: int = typer.Option(0, "--expand-calls", help="Inline N resolved callees."),
+    framework_events: bool = typer.Option(False, "--framework-events",
+                                          help="Append Frappe lifecycle trace."),
 ) -> None:
     """Explain a function: summary plus an optional deterministic Mermaid flow."""
     from beagle.explain import Explainer
@@ -347,6 +361,126 @@ def explain(
         typer.echo("\n# node sources")
         for nid, path, line in result.node_sources:
             typer.echo(f"  {nid}: {path}:{line}")
+    if framework_events:
+        _render_framework_events(workspace, result.entity.id)
+    workspace.close()
+
+
+def _render_framework_events(workspace, entity_id: str) -> None:
+    from beagle.lifecycle import LifecycleService
+
+    graph = LifecycleService(workspace.repo, GraphService(workspace.repo)).trace(entity_id, depth=1)
+    typer.echo("\n# framework events")
+    if graph is None or not graph.edges:
+        typer.echo("  (no document operations detected)")
+        return
+    for src, dst, cat in graph.edges:
+        s = graph.nodes.get(src, (src, ""))[0]
+        d = graph.nodes.get(dst, (dst, ""))[0]
+        typer.echo(f"  {s}  --{cat}-->  {d}")
+
+
+@app.command()
+def lifecycle(
+    doctype: str = typer.Argument(..., help="DocType name or id."),
+    event: Optional[str] = typer.Option(None, "--event", help="Restrict to one event."),
+) -> None:
+    """Show standard document lifecycle events and their handlers for a DocType."""
+    from beagle.lifecycle import LifecycleService
+
+    workspace = _open()
+    report = LifecycleService(workspace.repo, GraphService(workspace.repo)).lifecycle(doctype, event)
+    if report is None:
+        typer.echo(f"no DocType matches: {doctype}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    typer.echo(f"# {report.doctype_id}  policy={report.policy['framework']} "
+               f"{report.policy['version']} v{report.policy['policy_version']}")
+    for op in report.operations:
+        typer.echo(f"\n## {op.relationship}")
+        if op.override_note:
+            typer.echo(f"  ! {op.override_note}")
+        for ev in op.events:
+            _render_event(workspace, ev)
+    for note in report.notes:
+        typer.echo(f"# note: {note}")
+    workspace.close()
+
+
+def _render_event(workspace, ev) -> None:
+    flags = []
+    if ev.event.conditional:
+        flags.append(f"conditional: {ev.event.note}")
+    tag = f"  [{ev.event.category}]" + (f"  ({'; '.join(flags)})" if flags else "")
+    typer.echo(f"  {ev.event.order}. {ev.event.name}{tag}")
+    if ev.dispatch:
+        _render_dispatch(workspace, ev.dispatch, indent="      ")
+
+
+def _render_dispatch(workspace, dispatch, indent="  ") -> None:
+    if dispatch.controller:
+        typer.echo(f"{indent}controller: {_entity_label(workspace, dispatch.controller.target_id)} "
+                   f"({dispatch.controller.confidence:.2f})")
+    for h in dispatch.exact:
+        typer.echo(f"{indent}doc_event: {h.target_id or h.hint} ({h.confidence:.2f})")
+    for h in dispatch.wildcard:
+        typer.echo(f"{indent}wildcard doc_event: {h.target_id or h.hint}")
+    for h in dispatch.runtime:
+        typer.echo(f"{indent}runtime?: {h.hint}")
+    for note in dispatch.notes:
+        typer.echo(f"{indent}# {note}")
+
+
+@app.command(name="event-handlers")
+def event_handlers(
+    target: str = typer.Argument(..., help='"DocType.event" or DocType with --event.'),
+    event: Optional[str] = typer.Option(None, "--event"),
+) -> None:
+    """Resolve what runs for a (DocType, event): controller, doc_events, runtime."""
+    from beagle.lifecycle import LifecycleService
+
+    doctype, ev = (target.rsplit(".", 1) if event is None and "." in target else (target, event))
+    if not ev:
+        typer.echo("provide an event: 'DocType.event' or --event")
+        raise typer.Exit(code=1)
+    workspace = _open()
+    dispatch = LifecycleService(workspace.repo, GraphService(workspace.repo)).event_handlers(doctype, ev)
+    if dispatch is None:
+        typer.echo(f"no DocType matches: {doctype}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    typer.echo(f"# {dispatch.doctype_id} :: {dispatch.event}")
+    _render_dispatch(workspace, dispatch)
+    workspace.close()
+
+
+@app.command()
+def trace(
+    entity_id: str = typer.Argument(..., help="Function/method id or name."),
+    framework_events: bool = typer.Option(True, "--framework-events/--no-framework-events"),
+    depth: int = typer.Option(2, "--depth"),
+    mermaid: bool = typer.Option(False, "--mermaid"),
+) -> None:
+    """Trace document operations, lifecycle events, and handlers from a function."""
+    from beagle.lifecycle import LifecycleService
+    from beagle.lifecycle.mermaid import render as render_trace
+
+    workspace = _open()
+    graph = LifecycleService(workspace.repo, GraphService(workspace.repo)).trace(entity_id, depth=depth)
+    if graph is None:
+        typer.echo(f"not a single function: {entity_id}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    for src, dst, cat in graph.edges:
+        s = graph.nodes.get(src, (src, ""))[0]
+        d = graph.nodes.get(dst, (dst, ""))[0]
+        typer.echo(f"  {s}  --{cat}-->  {d}")
+    for note in graph.notes:
+        typer.echo(f"# note: {note}")
+    if mermaid:
+        typer.echo("\n```mermaid")
+        typer.echo(render_trace(graph))
+        typer.echo("```")
     workspace.close()
 
 

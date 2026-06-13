@@ -14,6 +14,7 @@ from typing import Optional
 from beagle.context import ContextCompiler
 from beagle.explain import Explainer
 from beagle.investigate import Investigator
+from beagle.lifecycle import LifecycleService
 from beagle.models import Edge, Entity
 from beagle.search import SearchEngine
 from beagle.search.graph import GraphService
@@ -114,7 +115,14 @@ class BeagleTools:
         return self._field_access(field, ("READS_DOCTYPE",))
 
     def writes_field(self, field: str) -> dict:
-        return self._field_access(field, ("WRITES_DOCTYPE", "CREATES_DOCTYPE"))
+        target = self._resolve_field(field)
+        if target is None:
+            return {"error": f"no field matches: {field}"}
+        return {
+            "field": target.id,
+            "writes": [self._edge_dict(e, "source_id")
+                       for e in self.ws.repo.edges_to(target.id, ("WRITES_FIELD",))],
+        }
 
     # --- context / source ---------------------------------------------
 
@@ -163,6 +171,54 @@ class BeagleTools:
                 {"node": nid, "path": path, "line": line}
                 for nid, path, line in result.node_sources
             ],
+        }
+
+    def event_handlers(self, doctype: str, event: str) -> dict:
+        service = LifecycleService(self.ws.repo, self.graph)
+        dispatch = service.event_handlers(doctype, event)
+        if dispatch is None:
+            return {"error": f"no DocType matches: {doctype}"}
+        return _dispatch_dict(dispatch)
+
+    def lifecycle(self, doctype: str, event: Optional[str] = None) -> dict:
+        service = LifecycleService(self.ws.repo, self.graph)
+        report = service.lifecycle(doctype, event)
+        if report is None:
+            return {"error": f"no DocType matches: {doctype}"}
+        return {
+            "doctype_id": report.doctype_id,
+            "policy": report.policy,
+            "notes": report.notes,
+            "operations": [
+                {
+                    "relationship": op.relationship,
+                    "override_note": op.override_note,
+                    "events": [
+                        {
+                            "name": ev.event.name, "order": ev.event.order,
+                            "category": ev.event.category,
+                            "conditional": ev.event.conditional, "note": ev.event.note,
+                            "dispatch": _dispatch_dict(ev.dispatch) if ev.dispatch else None,
+                        }
+                        for ev in op.events
+                    ],
+                }
+                for op in report.operations
+            ],
+        }
+
+    def trace(self, entity: str, framework_events: bool = True, depth: int = 2) -> dict:
+        service = LifecycleService(self.ws.repo, self.graph)
+        graph = service.trace(entity, depth=depth)
+        if graph is None:
+            return {"error": f"not a single function: {entity}"}
+        return {
+            "root": graph.root,
+            "truncated": graph.truncated,
+            "notes": graph.notes,
+            "nodes": [{"id": nid, "label": lbl, "kind": kind}
+                      for nid, (lbl, kind) in graph.nodes.items()],
+            "edges": [{"source": s, "target": d, "category": c} for s, d, c in graph.edges],
         }
 
     def read_source(self, entity_id: str) -> dict:
@@ -231,6 +287,28 @@ class BeagleTools:
             "file": edge.owner_file,
             "start_line": edge.source_range.start_line,
         }
+
+
+def _handler_dict(handler) -> dict:
+    return {
+        "category": handler.category,
+        "entity_id": handler.target_id,
+        "hint": handler.hint,
+        "confidence": handler.confidence,
+        "app": handler.app,
+    }
+
+
+def _dispatch_dict(dispatch) -> dict:
+    return {
+        "doctype_id": dispatch.doctype_id,
+        "event": dispatch.event,
+        "controller": _handler_dict(dispatch.controller) if dispatch.controller else None,
+        "exact_doc_events": [_handler_dict(h) for h in dispatch.exact],
+        "wildcard_doc_events": [_handler_dict(h) for h in dispatch.wildcard],
+        "runtime_channels": [_handler_dict(h) for h in dispatch.runtime],
+        "notes": dispatch.notes,
+    }
 
 
 def _entity_dict(entity: Optional[Entity], full: bool = False) -> Optional[dict]:

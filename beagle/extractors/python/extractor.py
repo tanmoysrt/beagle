@@ -55,21 +55,31 @@ def _is_test_function(name: str) -> bool:
     return name.startswith("test_") or name == "test"
 
 
-def _first_string_arg(args: list[cst.Arg]) -> Optional[str]:
-    """The first positional string-literal argument, if any.
+def _string_args(args: list[cst.Arg], limit: int = 4) -> list[Optional[str]]:
+    """Leading positional args as string literals (``None`` where not a literal).
 
-    Frappe ORM and job APIs take the DocType name or dotted method path as their
-    first positional string (``frappe.get_doc("Site")``), so the resolver maps
-    these to DocType/job targets in stage 5.
+    Frappe ORM/job/lifecycle APIs encode the DocType name, field name, or dotted
+    method path as leading positional strings — e.g.
+    ``frappe.db.set_value("Site", name, "status", x)`` — so the resolver reads
+    ``["Site", None, "status", ...]`` to map DocType and field targets.
     """
+    out: list[Optional[str]] = []
     for arg in args:
-        if arg.keyword is not None or isinstance(arg.star, str) and arg.star:
-            continue
+        if arg.keyword is not None or (isinstance(arg.star, str) and arg.star):
+            break  # positional args end here
         if isinstance(arg.value, cst.SimpleString):
             value = arg.value.evaluated_value
-            return value if isinstance(value, str) else None
-        return None
-    return None
+            out.append(value if isinstance(value, str) else None)
+        else:
+            out.append(None)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _first_string_arg(args: list[cst.Arg]) -> Optional[str]:
+    strings = _string_args(args, limit=1)
+    return strings[0] if strings else None
 
 
 def _exception_types(node: Optional[cst.BaseExpression]) -> list[str]:
@@ -339,8 +349,10 @@ class _Visitor(cst.CSTVisitor):
         annotation: Optional[str],
     ) -> None:
         call_callee = None
+        value_first_arg = None
         if isinstance(value, cst.Call):
             call_callee = dotted_name(value.func)
+            value_first_arg = _first_string_arg(value.args)
         self.out.observations.append(
             Observation(
                 kind="assignment",
@@ -352,6 +364,7 @@ class _Visitor(cst.CSTVisitor):
                     "target_code": self._src(target),
                     "annotation": annotation,
                     "value_callee": call_callee,
+                    "value_first_arg": value_first_arg,
                     "value_code": self._src(value) if value is not None else None,
                 },
             )
@@ -389,6 +402,7 @@ class _Visitor(cst.CSTVisitor):
             "super": is_super_call(receiver) if receiver is not None else False,
             "args": len(args),
             "first_arg": _first_string_arg(args),
+            "string_args": _string_args(args),
         }
 
     # --- control / failure signals (for investigate and explain) -------

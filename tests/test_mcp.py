@@ -88,3 +88,9 @@ def test_explain_function(tools):
     result = tools.explain_function("python://pkg.worker#Worker.run", include_mermaid=True)
     assert result["entity_id"] == "python://pkg.worker#Worker.run"
     assert "flowchart TD" in result["mermaid"]
+
+
+def test_trace_tool(tools):
+    # pure-python fixture: no document operations, but the tool must still answer
+    result = tools.trace("python://pkg.worker#Worker.run", depth=1)
+    assert "nodes" in result and "edges" in result

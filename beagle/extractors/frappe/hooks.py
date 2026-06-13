@@ -21,6 +21,10 @@ from beagle.models import Observation, SourceRange
 _DOC_EVENTS = "doc_events"
 _SCHEDULER = "scheduler_events"
 _OVERRIDE_CLASS = "override_doctype_class"
+_EXTEND_CLASS = "extend_doctype_class"
+_OVERRIDE_METHODS = "override_whitelisted_methods"
+_HAS_PERMISSION = "has_permission"
+_PERMISSION_QUERY = "permission_query_conditions"
 
 
 def is_hooks_file(relpath: str) -> bool:
@@ -35,12 +39,22 @@ def extract_hooks(relpath: str, text: str, module: str | None) -> list[Observati
     subject = module_id(module or "")
     out: list[Observation] = []
     for name, value in _top_level_assignments(tree):
-        if name == _DOC_EVENTS and isinstance(value, cst.Dict):
+        if not isinstance(value, cst.Dict):
+            continue
+        if name == _DOC_EVENTS:
             out += _doc_events(relpath, subject, value)
-        elif name == _SCHEDULER and isinstance(value, cst.Dict):
+        elif name == _SCHEDULER:
             out += _scheduler_events(relpath, subject, value)
-        elif name == _OVERRIDE_CLASS and isinstance(value, cst.Dict):
+        elif name == _OVERRIDE_CLASS:
             out += _override_class(relpath, subject, value)
+        elif name == _EXTEND_CLASS:
+            out += _extend_class(relpath, subject, value)
+        elif name == _OVERRIDE_METHODS:
+            out += _override_methods(relpath, subject, value)
+        elif name == _HAS_PERMISSION:
+            out += _permission(relpath, subject, value, "has_permission")
+        elif name == _PERMISSION_QUERY:
+            out += _permission(relpath, subject, value, "query_condition")
     return out
 
 
@@ -118,6 +132,37 @@ def _override_class(relpath, subject, node: cst.Dict) -> list[Observation]:
         if handler:
             out.append(_obs(relpath, subject, {
                 "hook": "override_class", "doctype": _string(doctype), "handler": handler,
+            }))
+    return out
+
+
+def _extend_class(relpath, subject, node: cst.Dict) -> list[Observation]:
+    out: list[Observation] = []
+    for doctype, klass in _dict_items(node):
+        for handler in _string_list(klass):
+            out.append(_obs(relpath, subject, {
+                "hook": "extend_class", "doctype": _string(doctype), "handler": handler,
+            }))
+    return out
+
+
+def _override_methods(relpath, subject, node: cst.Dict) -> list[Observation]:
+    out: list[Observation] = []
+    for original, override in _dict_items(node):
+        for handler in _string_list(override):
+            out.append(_obs(relpath, subject, {
+                "hook": "override_method", "original": _string(original), "handler": handler,
+            }))
+    return out
+
+
+def _permission(relpath, subject, node: cst.Dict, ptype: str) -> list[Observation]:
+    out: list[Observation] = []
+    for doctype, handler in _dict_items(node):
+        for path in _string_list(handler):
+            out.append(_obs(relpath, subject, {
+                "hook": "permission", "ptype": ptype,
+                "doctype": _string(doctype), "handler": path,
             }))
     return out
 
