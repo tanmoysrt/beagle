@@ -2,7 +2,9 @@
 
 # beagle
 
-Local code-discovery for Python and Frappe. Deterministic, no LLM.
+Local code-discovery for Python, Frappe, and their JS/TS/Vue frontends.
+Deterministic, no LLM. Traces frontend calls to their backend handlers
+(`frappe.call`, client ORM, frappe-ui resources → whitelisted methods & DocTypes).
 
 <br clear="left" />
 
@@ -55,13 +57,16 @@ Every MCP tool is also a CLI command — same engine, same results.
 | **Frappe data** | `uses_doctype`·`uses-doctype` · `reads_field`·`reads-field` · `writes_field`·`writes-field` · `tests` |
 | **Synthesis** | `context` · `investigate` · `explain_function`·`explain` · `function_context`·`card` |
 | **Lifecycle** | `lifecycle` · `event_handlers`·`event-handlers` · `trace` |
+| **Change memory** | `change_facts`·`change` · `entity_history`·`history` · `episode`·`episode show` |
 
-CLI-only: `index`, `mcp`.
+CLI-only: `index`, `mcp`, and episode authoring (`episode new/decision/
+alternative/supersede/followup/finalize/attach`) — the MCP server is read-only.
 
 **Which to use** — exact symbol → `resolve` then `show`/`relations`. What a
 function does → `card` (behaviour) or `explain` (control flow). Conceptual
 question → `context`; a bug report → `investigate`. What runs on save →
-`lifecycle` or `trace`; one custom event → `event-handlers`.
+`lifecycle` or `trace`; one custom event → `event-handlers`. Why an entity
+changed → `history`; record the reasoning behind a change → `episode`.
 
 Tools return stable ids — feed them into the next call. Read only the returned
 ranges; fall back to Grep/Glob when coverage is thin.

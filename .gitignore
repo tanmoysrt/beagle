@@ -16,3 +16,8 @@ dist/
 venv/
 env/
 .env
+
+# installed agent skills (vendored per-dev; install with: npx skills add frappe/skills)
+.agents/
+.claude/skills/
+skills-lock.json

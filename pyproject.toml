@@ -9,6 +9,8 @@ dependencies = [
     "pathspec>=0.12",
     "typer>=0.12",
     "mcp>=1.0",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-language-pack>=1.8.1",
 ]
 
 [project.scripts]

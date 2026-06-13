@@ -256,6 +256,61 @@ class BeagleTools:
             "edges": [{"source": s, "target": d, "category": c} for s, d, c in graph.edges],
         }
 
+    def change_facts(self, spec: Optional[str] = None) -> dict:
+        """Deterministic change facts for a commit, range, or the working tree."""
+        report = self._temporal().analyze(spec)
+        return {
+            "base_commit": report.base_commit, "head_commit": report.head_commit,
+            "commits": [c.commit_sha for c in report.commits],
+            "entity_changes": [
+                {"change_type": c.change_type,
+                 "entity": c.entity_after or c.entity_before,
+                 "path": c.path_after or c.path_before, "confidence": c.confidence}
+                for c in report.entity_changes
+            ],
+            "patch_id": report.changeset.patch_id if report.changeset else None,
+            "notes": report.notes,
+        }
+
+    def entity_history(self, entity: str) -> dict:
+        """Why an entity changed: episodes, decisions, and recorded changes."""
+        result = self._temporal().entity_history(entity)
+        if "error" in result:
+            return result
+        return {
+            "entity_id": result["entity_id"],
+            "episodes": [{"id": e.id, "title": e.title, "status": e.status}
+                         for e in result["episodes"]],
+            "decisions": [{"statement": d.statement, "status": d.status,
+                           "confirmation": d.confirmation,
+                           "superseded_by": d.superseded_by} for d in result["decisions"]],
+            "changes": [{"change_type": c.change_type, "commit": c.commit_sha}
+                        for c in result["changes"]],
+        }
+
+    def episode(self, episode_id: str) -> dict:
+        """An episode with its decisions, alternatives, commits, and follow-ups."""
+        bundle = self._temporal().episode_bundle(episode_id)
+        if bundle is None:
+            return {"error": f"no episode: {episode_id}"}
+        ep = bundle["episode"]
+        return {
+            "id": ep.id, "title": ep.title, "status": ep.status,
+            "problem": ep.problem, "goal": ep.goal, "outcome": ep.outcome,
+            "decisions": [{"id": d.id, "statement": d.statement, "status": d.status,
+                           "superseded_by": d.superseded_by} for d in bundle["decisions"]],
+            "alternatives": [{"description": a.description, "reason": a.rejection_reason}
+                             for a in bundle["alternatives"]],
+            "commits": [c.commit_sha for c in bundle["commits"]],
+            "followups": [{"description": f.description, "status": f.status}
+                          for f in bundle["followups"]],
+        }
+
+    def _temporal(self):
+        from beagle.temporal import TemporalRepository, TemporalService
+
+        return TemporalService(self.ws.root, self.ws.repo, TemporalRepository(self.ws.db))
+
     def read_source(self, entity_id: str) -> dict:
         entity = self.ws.repo.get_entity(entity_id)
         if entity is None:

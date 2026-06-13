@@ -15,6 +15,7 @@ from beagle.models import Edge, Observation
 from beagle.resolution.builder import build_symbol_table, _absolute_module
 from beagle.resolution.calls import RESOLVER_VERSION, CallResolver
 from beagle.resolution.frappe import frappe_edges
+from beagle.resolution.javascript import javascript_edges
 from beagle.resolution.symbols import SymbolTable, make_entity_id, make_module_id, split_id
 
 
@@ -28,6 +29,7 @@ def resolve_workspace(db: Database, repo: Repository) -> None:
     edges += _inheritance_edges(repo, table)
     edges += _override_edges(table)
     edges += frappe_edges(repo, table)
+    edges += javascript_edges(repo, table)
     edges += [caller.resolve(o) for o in repo.observations_of_kind("call")]
 
     with db.transaction() as conn:

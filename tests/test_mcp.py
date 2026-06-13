@@ -112,6 +112,22 @@ def test_function_context_ambiguous(tools):
     assert "error" in card
 
 
+def test_change_facts_non_git(tools):
+    # The fixture workspace is not a git repo: the tool answers gracefully.
+    result = tools.change_facts()
+    assert "not a git repository" in result["notes"]
+
+
+def test_entity_history_empty(tools):
+    result = tools.entity_history("python://pkg.worker#helper")
+    assert result["entity_id"] == "python://pkg.worker#helper"
+    assert result["episodes"] == [] and result["changes"] == []
+
+
+def test_episode_missing(tools):
+    assert "error" in tools.episode("nope")
+
+
 def test_trace_tool(tools):
     # pure-python fixture: no document operations, but the tool must still answer
     result = tools.trace("python://pkg.worker#Worker.run", depth=1)

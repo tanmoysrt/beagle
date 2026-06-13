@@ -2,7 +2,7 @@
 
 ## MCP tools
 
-Expose (21 tools). Foundational lookup/graph/Frappe-data tools:
+Expose (24 tools). Foundational lookup/graph/Frappe-data tools:
 
 ```text
 index_status
@@ -31,6 +31,14 @@ function_context
 event_handlers
 lifecycle
 trace
+```
+
+Temporal memory tools (design/13, read-only; authoring is CLI-only):
+
+```text
+change_facts
+entity_history
+episode
 ```
 
 `callers`/`callees`/`tests`/`uses_doctype` are intentional filtered views of

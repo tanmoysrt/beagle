@@ -42,10 +42,12 @@ Current scope:
 - Python tests
 - CLI
 - read-only MCP server for Claude Code
+- JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
+- frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
 
 Current non-goals:
 
-- JavaScript, TypeScript, and Vue
+- JS-internal call-graph and import resolution (facts stored, edges staged — see `design/14`)
 - PR review
 - GitHub integration
 - embeddings

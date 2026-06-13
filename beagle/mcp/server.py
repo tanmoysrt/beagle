@@ -50,6 +50,9 @@ def build_server(workspace: Workspace) -> FastMCP:
     mcp.add_tool(tools.lifecycle, description="Standard document lifecycle events and handlers for a DocType.")
     mcp.add_tool(tools.trace, description="Trace operations, lifecycle events, and handlers from a function.")
     mcp.add_tool(tools.read_source, description="Exact source for an entity.")
+    mcp.add_tool(tools.change_facts, description="Deterministic change facts for a commit, range, or working tree.")
+    mcp.add_tool(tools.entity_history, description="Why an entity changed: episodes, decisions, recorded changes.")
+    mcp.add_tool(tools.episode, description="A change episode: decisions, alternatives, commits, follow-ups.")
     return mcp
 
 
