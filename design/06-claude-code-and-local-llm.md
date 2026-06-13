@@ -1,4 +1,4 @@
-# 06 — Claude Code and Local LLM
+# 06 — Claude Code (MCP)
 
 ## MCP tools
 
@@ -38,7 +38,7 @@ Claude should:
 
 The index supplements normal tools. It must not block them.
 
-## Optional local LLM flow
+## LLM flow (Claude only)
 
 ```text
 Question
@@ -51,11 +51,8 @@ Question
    +-- produce a concise cited explanation
 ```
 
-Use a small code-instruct model only after the retrieval layer is reliable.
-
-Require structured tool plans and limit planning iterations.
-
-The local model must not:
+Claude — through the CLI or the MCP server — is the only LLM layer. There is no
+bundled local model (Stage 11 dropped). The model, whichever it is, must not:
 
 - parse the repository instead of the indexer;
 - mutate the graph;

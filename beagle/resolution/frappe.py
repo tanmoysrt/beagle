@@ -8,6 +8,7 @@ without committing to a single target.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from beagle.database.repository import Repository
@@ -61,10 +62,17 @@ def field_id_from_doctype(doctype_id: str, field: str) -> str:
     return f"doctype-field://{rest}#{field}"
 
 
+# ORM reads whose 3rd positional string arg names the field(s) read.
+_GETVALUE_FIELD = {"frappe.db.get_value", "frappe.get_value", "frappe.db.get_values"}
+# self.<field> with no nested attribute/subscript.
+_SELF_FIELD = re.compile(r"^self\.([A-Za-z_]\w*)$")
+
+
 def _field_write_edges(repo, table, by_name, class_to_doctype) -> list[Edge]:
     edges: list[Edge] = []
     edges += _setvalue_field_edges(repo, table, by_name)
     edges += _self_field_edges(repo, table, class_to_doctype)
+    edges += _field_read_edges(repo, table, by_name, class_to_doctype)
     return edges
 
 
@@ -79,7 +87,7 @@ def _setvalue_field_edges(repo, table, by_name) -> list[Edge]:
         doctype = by_name.get(args[0])
         if not doctype:
             continue
-        edges.append(_field_edge(obs, obs.subject, doctype, args[2], table))
+        edges.append(_field_edge(obs, obs.subject, doctype, args[2], table, "WRITES_FIELD"))
     return edges
 
 
@@ -95,20 +103,59 @@ def _self_field_edges(repo, table, class_to_doctype) -> list[Edge]:
         cls = table.class_of(obs.subject)
         doctype = class_to_doctype.get(cls) if cls else None
         if doctype:
-            edges.append(_field_edge(obs, obs.subject, doctype, field, table))
+            edges.append(_field_edge(obs, obs.subject, doctype, field, table, "WRITES_FIELD"))
     return edges
 
 
-def _field_edge(obs, source, doctype_id, field, table) -> Edge:
+def _field_read_edges(repo, table, by_name, class_to_doctype) -> list[Edge]:
+    """Field-level READS_FIELD from two conservative static sources: ORM
+    get_value-family field args, and self.<field> reads captured in numeric
+    comparison observations (the retry/threshold conditions investigate needs).
+    Plain assignment-RHS reads are not tracked — capturing every self.<attr>
+    read would inflate the index without a demonstrated need."""
+    edges: list[Edge] = []
+    edges += _getvalue_field_edges(repo, table, by_name)
+    edges += _comparison_field_edges(repo, table, class_to_doctype)
+    return edges
+
+
+def _getvalue_field_edges(repo, table, by_name) -> list[Edge]:
+    edges: list[Edge] = []
+    for obs in repo.observations_of_kind("call"):
+        if obs.data.get("dotted") not in _GETVALUE_FIELD:
+            continue
+        args = obs.data.get("string_args") or []
+        doctype = by_name.get(args[0]) if args and args[0] else None
+        if not doctype or len(args) < 3 or not args[2]:
+            continue
+        edges.append(_field_edge(obs, obs.subject, doctype, args[2], table, "READS_FIELD"))
+    return edges
+
+
+def _comparison_field_edges(repo, table, class_to_doctype) -> list[Edge]:
+    edges: list[Edge] = []
+    for obs in repo.observations_of_kind("comparison"):
+        match = _SELF_FIELD.match(obs.data.get("left_code") or "")
+        if not match:
+            continue
+        cls = table.class_of(obs.subject)
+        doctype = class_to_doctype.get(cls) if cls else None
+        if doctype:
+            edges.append(_field_edge(obs, obs.subject, doctype, match.group(1), table, "READS_FIELD"))
+    return edges
+
+
+def _field_edge(obs, source, doctype_id, field, table, relationship) -> Edge:
     field_eid = field_id_from_doctype(doctype_id, field)
     resolved = field_eid in table.entities
+    verb = "read" if relationship == "READS_FIELD" else "write"
     return Edge(
         source_id=source,
-        relationship="WRITES_FIELD",
+        relationship=relationship,
         target_id=field_eid if resolved else None,
         target_hint=field_eid,
         confidence=0.9 if resolved else 0.3,
-        resolver="frappe-field-write" if resolved else "frappe-field-write-unconfirmed",
+        resolver=f"frappe-field-{verb}" if resolved else f"frappe-field-{verb}-unconfirmed",
         resolver_version=RESOLVER_VERSION,
         owner_file=obs.owner_file,
         source_range=obs.source_range,

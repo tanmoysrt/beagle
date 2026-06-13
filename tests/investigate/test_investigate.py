@@ -158,6 +158,25 @@ def test_framework_lifecycle_expanded_for_save(repo):
     assert "on_change" in lines
 
 
+def test_workflow_start_is_labelled_entrypoint(repo):
+    report = _investigator(repo).investigate("certificate renewal stops after 5 attempts")
+    steps = report.data["primary_workflows"][0]["steps"]
+    assert steps[0]["via"] == "entrypoint"
+
+
+def test_next_hop_labels_resolved_call_and_lifecycle(repo):
+    # Certificate.renew calls self.run_certbot() (resolved -> "call") and
+    # self.save() (operation -> "lifecycle: saves"). Hop labels reflect type.
+    inv = _investigator(repo)
+    renew = "python://app.doctype.tls_certificate.tls_certificate#Certificate.renew"
+    assert inv._next_hop(renew, set()) == (
+        "python://app.doctype.tls_certificate.tls_certificate#Certificate.run_certbot", "call")
+    # with the call target already visited, the next hop is the save lifecycle
+    seen = {renew, "python://app.doctype.tls_certificate.tls_certificate#Certificate.run_certbot"}
+    target, via = inv._next_hop(renew, seen)
+    assert target == "doctype://app/TLS Certificate" and via == "lifecycle: saves"
+
+
 def test_mermaid_renders_from_evidence(repo):
     report = _investigator(repo).investigate("certificate renewal stops after 5 attempts")
     diagram = render_investigation(report.data)

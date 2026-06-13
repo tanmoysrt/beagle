@@ -235,6 +235,24 @@ def test_trace_save_to_handler(ws):
     assert any(c == "framework" for _, _, c in cats)       # Order -> event / handler
 
 
+def test_super_continuation_into_next_controller(ws):
+    # OrderMixin (extend) is the effective on_update controller and calls
+    # super().on_update(); the trace must continue into Order.on_update.
+    graph = _service(ws).trace("place_order", depth=2)
+    mixin = "python://app.overrides#OrderMixin.on_update"
+    base = "python://app.doctype.order.order#Order.on_update"
+    assert mixin in graph.nodes and base in graph.nodes
+    assert (mixin, base, "framework") in graph.edges
+
+
+def test_no_super_continuation_without_super_call(ws):
+    # CustomInvoice.on_update (override of Invoice) does NOT call super();
+    # there must be no continuation edge out of it.
+    graph = _service(ws).trace("place_order", depth=2)
+    invoice_override = "python://app.overrides#CustomInvoice.on_update"
+    assert not any(s == invoice_override and c == "framework" for s, _, c in graph.edges)
+
+
 def test_lifecycle_report_save_events(ws):
     report = _service(ws).lifecycle("Order")
     save = next(op for op in report.operations if op.relationship == "SAVES_DOCTYPE")

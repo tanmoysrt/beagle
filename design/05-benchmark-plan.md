@@ -67,7 +67,6 @@ Compare:
 
 1. Claude Code using Read/Grep/Glob only
 2. Claude Code using `project-index`
-3. optional local LLM using `project-index`
 
 Record:
 

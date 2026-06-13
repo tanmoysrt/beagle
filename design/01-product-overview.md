@@ -32,7 +32,9 @@ Consumers:
 
 1. CLI
 2. Claude Code through MCP
-3. Optional small local LLM for query planning and explanation
+
+Claude is the only LLM layer; Beagle ships no bundled local model and the
+engine itself stays fully deterministic.
 
 ## First useful release
 

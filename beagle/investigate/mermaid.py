@@ -56,11 +56,13 @@ def _add_chain(b: _Builder, data: dict) -> None:
     steps = workflows[0]["steps"] if workflows else []
     prev = None
     for step in steps:
-        cur = b.node(step)
+        cur = b.node(step["name"])
         if cur is None:
             break
         if prev:
-            b.edge(prev, cur)
+            # entrypoint hop has via="entrypoint"; later hops carry the path type
+            via = step.get("via", "")
+            b.edge(prev, cur, "-->", "" if via == "entrypoint" else via)
         prev = cur
 
 

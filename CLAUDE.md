@@ -84,7 +84,7 @@ For every task:
 8. Explain known false positives and false negatives.
 9. Update design files only when behavior or architecture intentionally changes.
 
-Do not skip to MCP or local-LLM integration before the same operation works through the CLI.
+Do not skip to MCP integration before the same operation works through the CLI.
 
 ## Communication
 

@@ -364,25 +364,41 @@ class Investigator:
 
     def _workflow(self, cited) -> ReportSection:
         section = ReportSection("Probable workflow")
-        if not cited:
-            return section
-        start = next((c for c in cited if c.signals.is_endpoint or c.signals.driven_by_hook_or_job), cited[0])
-        chain = self._callee_chain(start.entity.id)
-        if chain:
-            section.lines.append(" -> ".join(self._short(i) for i in chain))
+        path = self._workflow_path(cited)
+        if path:
+            parts = [self._short(path[0][0])]
+            parts += [f"--({via})--> {self._short(eid)}" for eid, via in path[1:]]
+            section.lines.append(" ".join(parts))
         return section
 
-    def _callee_chain(self, start: str, limit: int = 6) -> list[str]:
-        chain, node, seen = [start], start, {start}
-        while len(chain) < limit:
-            nxt = next((e.target_id for e in self.graph.callees(node)
-                        if e.target_id and e.target_id not in seen), None)
-            if not nxt:
+    # Hop priority + label per design/11 §7 path types (don't flatten to "call").
+    _HOP_RELS = (("CALLS", "call"), ("ENQUEUES", "job dispatch"))
+
+    def _workflow_path(self, cited) -> list[tuple[str, str]]:
+        if not cited:
+            return []
+        start = next((c for c in cited
+                      if c.signals.is_endpoint or c.signals.driven_by_hook_or_job), cited[0])
+        path, node, seen = [(start.entity.id, "entrypoint")], start.entity.id, {start.entity.id}
+        while len(path) < 6:
+            hop = self._next_hop(node, seen)
+            if hop is None:
                 break
-            chain.append(nxt)
-            seen.add(nxt)
-            node = nxt
-        return chain
+            path.append(hop)
+            seen.add(hop[0])
+            node = hop[0]
+        return path
+
+    def _next_hop(self, node: str, seen: set) -> Optional[tuple[str, str]]:
+        for rel, label in self._HOP_RELS:
+            for e in self.repo.edges_from(node, (rel,)):
+                if e.target_id and e.target_id not in seen:
+                    return (e.target_id, label)
+        for rel in _OPERATION_RELS:
+            for e in self.repo.edges_from(node, (rel,)):
+                if e.target_id and e.target_id not in seen:
+                    return (e.target_id, f"lifecycle: {self._OP_VERB.get(rel, rel)}")
+        return None
 
     def _retry_conditions(self, cited) -> ReportSection:
         section = ReportSection("Retry and stop conditions")
@@ -486,12 +502,13 @@ class Investigator:
         }
 
     def _wf_data(self, cited: list[Candidate]) -> list[dict]:
-        if not cited:
+        path = self._workflow_path(cited)
+        if not path:
             return []
-        start = next((c for c in cited
-                      if c.signals.is_endpoint or c.signals.driven_by_hook_or_job), cited[0])
-        chain = self._callee_chain(start.entity.id)
+        start = cited[0]
         reason = ("scheduler/hook/endpoint entrypoint"
-                  if start.signals.is_endpoint or start.signals.driven_by_hook_or_job
+                  if any(c.signals.is_endpoint or c.signals.driven_by_hook_or_job
+                         for c in cited[:1])
                   else "highest-ranked candidate")
-        return [{"reason": reason, "steps": [self._short(i) for i in chain]}]
+        steps = [{"name": self._short(eid), "via": via} for eid, via in path]
+        return [{"reason": reason, "steps": steps}]

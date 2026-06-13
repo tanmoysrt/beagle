@@ -112,6 +112,14 @@ class BeagleTools:
         return {"tests": [self._edge_dict(e, "source_id") for e in self.graph.tests(resolved)]}
 
     def reads_field(self, field: str) -> dict:
+        target = self._resolve_field(field)
+        if target is None:
+            return {"error": f"no field matches: {field}"}
+        edges = self.ws.repo.edges_to(target.id, ("READS_FIELD",))
+        if edges:
+            return {"field": target.id,
+                    "reads": [self._edge_dict(e, "source_id") for e in edges]}
+        # fall back to DocType-level reads when no field-level read was captured
         return self._field_access(field, ("READS_DOCTYPE",))
 
     def writes_field(self, field: str) -> dict:
@@ -275,7 +283,7 @@ class BeagleTools:
         return {
             "field": field.id,
             "doctype": doctype_id,
-            "note": "field-level access not tracked yet; results are DocType-granular",
+            "note": "no field-level access captured; results are DocType-granular",
             "access": [self._edge_dict(e, "source_id") for e in edges],
         }
 

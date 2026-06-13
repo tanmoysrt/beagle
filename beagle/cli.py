@@ -236,8 +236,25 @@ def tests(entity_id: str = typer.Argument(..., help="Entity id or name.")) -> No
 
 @app.command(name="reads-field")
 def reads_field(field: str = typer.Argument(..., help="Field id or DocType.field name.")) -> None:
-    """List code reading the DocType that owns a field (doctype-granular)."""
-    _field_access(field, ("READS_DOCTYPE",))
+    """List code reading a field (ORM get_value field arg or self.<field> in conditions)."""
+    workspace = _open()
+    target = _resolve_field(workspace, field)
+    if target is None:
+        typer.echo(f"no field matches: {field}")
+        workspace.close()
+        return
+    edges = workspace.repo.edges_to(target.id, ("READS_FIELD",))
+    if edges:
+        for e in edges:
+            typer.echo(f"  {_entity_label(workspace, e.source_id)}  "
+                       f"{e.owner_file}:{e.source_range.start_line}  ({e.confidence:.2f})")
+    else:
+        doctype_id = target.extra.get("doctype_id")
+        typer.echo(f"# no field-level reads tracked; DocType-level access to {doctype_id}:")
+        for e in workspace.repo.edges_to(doctype_id, ("READS_DOCTYPE",)):
+            typer.echo(f"  {e.relationship}: {_entity_label(workspace, e.source_id)}  "
+                       f"{e.owner_file}:{e.source_range.start_line}")
+    workspace.close()
 
 
 @app.command(name="writes-field")
@@ -255,21 +272,6 @@ def writes_field(field: str = typer.Argument(..., help="Field id or DocType.fiel
     for e in edges:
         typer.echo(f"  {_entity_label(workspace, e.source_id)}  "
                    f"{e.owner_file}:{e.source_range.start_line}  ({e.confidence:.2f})")
-    workspace.close()
-
-
-def _field_access(ref: str, relationships: tuple[str, ...]) -> None:
-    workspace = _open()
-    field = _resolve_field(workspace, ref)
-    if field is None:
-        typer.echo(f"no field matches: {ref}")
-        workspace.close()
-        return
-    doctype_id = field.extra.get("doctype_id")
-    typer.echo(f"# field-level reads not tracked; showing DocType-level access to {doctype_id}")
-    for e in workspace.repo.edges_to(doctype_id, relationships):
-        typer.echo(f"  {e.relationship}: {_entity_label(workspace, e.source_id)}  "
-                   f"{e.owner_file}:{e.source_range.start_line}")
     workspace.close()
 
 

@@ -175,6 +175,25 @@ class LifecycleService:
         graph.notes.extend(n for n in dispatch.notes if n not in graph.notes)
         for handler in dispatch.all_handlers():
             self._expand_handler(graph, event_node, handler, depth, seen)
+        self._expand_super_chain(graph, doctype_id, event_name, depth, seen)
+
+    def _expand_super_chain(self, graph, doctype_id, event_name, depth, seen) -> None:
+        """Continue into the next controller method when the effective one calls
+        super().<event>() — the only edge that justifies running it."""
+        chain = self.dispatcher.controller_chain(doctype_id, event_name)
+        for earlier, later in zip(chain, chain[1:]):
+            if not self._calls_super(earlier, event_name):
+                break
+            self._add_node(graph, later, self._label(later), "controller")
+            graph.edges.append((earlier, later, "framework"))
+            if depth > 0:
+                self._expand_function(graph, later, depth - 1, seen)
+
+    def _calls_super(self, method_id: str, event_name: str) -> bool:
+        for obs in self.repo.observations_for_subjects([method_id], ("call",)):
+            if obs.data.get("super") and obs.data.get("attr") == event_name:
+                return True
+        return False
 
     def _expand_handler(self, graph, event_node, handler, depth, seen) -> None:
         hid = handler.target_id or f"hint://{handler.hint}"

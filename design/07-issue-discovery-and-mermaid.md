@@ -127,5 +127,7 @@ Rules:
 - omit low-value implementation details;
 - emphasize branches, state changes, jobs, external calls, returns, and failures.
 
-A local LLM may shorten labels or summarize evidence. It may not invent workflow steps, conditions, or edges.
+Label shortening or evidence summarization is left to Claude. Beagle never
+invents workflow steps, conditions, or edges — diagrams come only from indexed
+facts.
 

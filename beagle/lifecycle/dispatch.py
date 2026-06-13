@@ -97,6 +97,39 @@ class EventDispatcher:
                                source_file=entity.owner_file if entity else None)
         return None
 
+    def _mro_classes(self, doctype_id: str) -> list[str]:
+        """Effective controller MRO: extend mixins first, then override/base
+        controllers, then their INHERITS bases (depth-first, deduped). This is
+        the Frappe-injected order a pure-Python base walk cannot see."""
+        roots = [e.target_id for e in self.repo.edges_from(doctype_id, ("EXTENDS_CONTROLLER",)) if e.target_id]
+        roots += [e.target_id for e in self.repo.edges_from(doctype_id, ("HAS_CONTROLLER",)) if e.target_id]
+        order: list[str] = []
+        seen: set = set()
+
+        def walk(cls: str) -> None:
+            if cls in seen:
+                return
+            seen.add(cls)
+            order.append(cls)
+            for edge in self.repo.edges_from(cls, ("INHERITS",)):
+                if edge.target_id:
+                    walk(edge.target_id)
+
+        for root in roots:
+            walk(root)
+        return order
+
+    def controller_chain(self, doctype_id: str, event: str) -> list[str]:
+        """Ordered method ids that define ``event`` along the controller MRO.
+        chain[0] is the effective controller; later entries run only when an
+        earlier one calls ``super().<event>()`` (super-continuation, design/09)."""
+        chain = []
+        for cls in self._mro_classes(doctype_id):
+            method = f"{cls}.{event}"
+            if self.repo.get_entity(method) is not None:
+                chain.append(method)
+        return chain
+
     def _find_method(self, class_id: str, name: str, seen: set) -> Optional[str]:
         if class_id in seen:
             return None
