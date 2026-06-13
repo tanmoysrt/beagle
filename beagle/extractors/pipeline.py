@@ -16,6 +16,7 @@ from beagle.extractors.chunker import chunk_text
 from beagle.extractors.frappe import extract_doctype, is_doctype_json
 from beagle.extractors.frappe.hooks import extract_hooks, is_hooks_file
 from beagle.extractors.frappe.runtime import augment_runtime
+from beagle.extractors.javascript import extract_javascript, extract_vue
 from beagle.extractors.python import extract_python
 from beagle.models import DiscoveredFile, Entity, Observation, TextChunk
 
@@ -33,9 +34,27 @@ def extract_file(discovered: DiscoveredFile, text: str) -> ExtractionResult:
         _extract_python(discovered, text, result)
     elif discovered.language == "json" and is_doctype_json(text):
         _extract_doctype(discovered, text, result)
+    elif discovered.language in ("javascript", "typescript"):
+        _extract_js(discovered, text, result)
+    elif discovered.language == "vue":
+        _extract_js(discovered, text, result, vue=True)
     if not result.chunks:
         result.chunks = chunk_text(discovered.relpath, text)
     return result
+
+
+def _extract_js(
+    discovered: DiscoveredFile, text: str, result: ExtractionResult, vue: bool = False
+) -> None:
+    extraction = (
+        extract_vue(discovered.relpath, text)
+        if vue
+        else extract_javascript(discovered.relpath, text, discovered.language)
+    )
+    result.entities = extraction.entities
+    result.observations = extraction.observations
+    # Symbol chunks sharpen name search; window chunks keep full-text coverage.
+    result.chunks = extraction.chunks + chunk_text(discovered.relpath, text)
 
 
 def _extract_doctype(discovered: DiscoveredFile, text: str, result: ExtractionResult) -> None:

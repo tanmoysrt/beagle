@@ -127,6 +127,131 @@ MIGRATIONS: list[tuple[int, str]] = [
         END;
         """,
     ),
+    (
+        2,
+        # Temporal decision and change memory (design/13). These tables are
+        # deliberately NOT keyed on owner_file: they record history that must
+        # survive reindexing, so connection._OWNED_TABLES never purges them.
+        """
+        CREATE TABLE temporal_episodes (
+            id           TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            status       TEXT NOT NULL,
+            created_at   REAL NOT NULL,
+            updated_at   REAL NOT NULL,
+            base_commit  TEXT,
+            head_commit  TEXT,
+            branch       TEXT,
+            summary      TEXT,
+            problem      TEXT,
+            goal         TEXT,
+            outcome      TEXT,
+            confidence   REAL,
+            confirmation TEXT NOT NULL DEFAULT 'generated',
+            provenance_json TEXT
+        );
+
+        CREATE TABLE temporal_sessions (
+            id                TEXT PRIMARY KEY,
+            episode_id        TEXT,
+            tool              TEXT,
+            started_at        REAL,
+            ended_at          REAL,
+            working_directory TEXT,
+            start_commit      TEXT,
+            end_commit        TEXT,
+            transcript_path   TEXT,
+            transcript_hash   TEXT,
+            summary           TEXT,
+            redaction_status  TEXT
+        );
+
+        CREATE TABLE temporal_decisions (
+            id            TEXT PRIMARY KEY,
+            episode_id    TEXT,
+            statement     TEXT NOT NULL,
+            rationale     TEXT,
+            status        TEXT NOT NULL,
+            confidence    REAL,
+            created_at    REAL NOT NULL,
+            superseded_by TEXT,
+            confirmation  TEXT NOT NULL DEFAULT 'generated',
+            provenance_json TEXT
+        );
+
+        CREATE TABLE temporal_alternatives (
+            id               TEXT PRIMARY KEY,
+            episode_id       TEXT,
+            description      TEXT NOT NULL,
+            status           TEXT NOT NULL,
+            rejection_reason TEXT,
+            provenance_json  TEXT
+        );
+
+        CREATE TABLE temporal_commits (
+            commit_sha       TEXT PRIMARY KEY,
+            episode_id       TEXT,
+            parent_shas      TEXT,
+            message          TEXT,
+            author           TEXT,
+            timestamp        REAL,
+            patch_id         TEXT,
+            match_confidence REAL
+        );
+
+        CREATE TABLE temporal_entity_changes (
+            id              INTEGER PRIMARY KEY,
+            episode_id      TEXT,
+            commit_sha      TEXT,
+            entity_before   TEXT,
+            entity_after    TEXT,
+            change_type     TEXT NOT NULL,
+            path_before     TEXT,
+            path_after      TEXT,
+            diff_ranges_json TEXT,
+            confidence      REAL
+        );
+
+        CREATE TABLE temporal_changesets (
+            id                 TEXT PRIMARY KEY,
+            episode_id         TEXT,
+            base_commit        TEXT,
+            head_commit        TEXT,
+            patch_id           TEXT,
+            entity_fingerprint TEXT,
+            summary            TEXT
+        );
+
+        CREATE TABLE temporal_test_results (
+            id                TEXT PRIMARY KEY,
+            episode_id        TEXT,
+            command           TEXT,
+            status            TEXT,
+            started_at        REAL,
+            finished_at       REAL,
+            output_summary    TEXT,
+            source_session_id TEXT
+        );
+
+        CREATE TABLE temporal_followups (
+            id               TEXT PRIMARY KEY,
+            episode_id       TEXT,
+            description      TEXT NOT NULL,
+            status           TEXT,
+            priority         TEXT,
+            related_entities TEXT
+        );
+
+        CREATE INDEX idx_tchanges_episode ON temporal_entity_changes(episode_id);
+        CREATE INDEX idx_tchanges_after   ON temporal_entity_changes(entity_after);
+        CREATE INDEX idx_tchanges_before  ON temporal_entity_changes(entity_before);
+        CREATE INDEX idx_tchanges_commit  ON temporal_entity_changes(commit_sha);
+        CREATE INDEX idx_tcommits_episode ON temporal_commits(episode_id);
+        CREATE INDEX idx_tdecisions_episode ON temporal_decisions(episode_id);
+        CREATE INDEX idx_talternatives_episode ON temporal_alternatives(episode_id);
+        CREATE INDEX idx_tfollowups_episode ON temporal_followups(episode_id);
+        """,
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

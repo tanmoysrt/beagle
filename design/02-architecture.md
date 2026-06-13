@@ -2,8 +2,9 @@
 
 ## Stack
 
-- Python 3.11+
+- Python 3.11+ (standard GIL build; the free-threaded build breaks the tree-sitter binding)
 - LibCST for Python parsing and source ranges
+- tree-sitter (via `tree-sitter-language-pack`) for JavaScript/TypeScript/Vue parsing — see `design/14`
 - SQLite for persistence
 - SQLite FTS5 for lexical search
 - `pathspec` for ignore rules
@@ -35,8 +36,14 @@ Repository
    |     +-- endpoints
    |     +-- tests
    |
+   +-- JS/TS/Vue extraction (design/14)
+   |     +-- modules, classes, functions, methods
+   |     +-- imports and `extends`
+   |     +-- frontend API calls (frappe.call, db.*, frappe-ui resources)
+   |
    +-- resolution
    |     +-- lexical names
+   |     +-- frontend -> backend (CALLS_BACKEND, QUERIES_DOCTYPE)
    |     +-- imports and aliases
    |     +-- inheritance
    |     +-- simple type propagation

@@ -576,6 +576,278 @@ def trace(
     workspace.close()
 
 
+def _temporal(workspace: Workspace):
+    from beagle.temporal import TemporalRepository, TemporalService
+
+    return TemporalService(workspace.root, workspace.repo,
+                           TemporalRepository(workspace.db))
+
+
+@app.command()
+def change(
+    spec: Optional[str] = typer.Argument(None, help="Commit, 'base..head', or omit for working tree."),
+    episode: Optional[str] = typer.Option(None, "--episode", "-e", help="Record against this episode."),
+    note: bool = typer.Option(False, "--note", help="Attach a git note to the head commit."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the structured report."),
+) -> None:
+    """Deterministic change facts: commits, changed entities, patch id."""
+    workspace = _open()
+    service = _temporal(workspace)
+    report = service.analyze(spec)
+    if episode:
+        service.record(report, episode_id=episode, write_note=note)
+    if as_json:
+        typer.echo(json.dumps(_change_json(report), indent=2))
+    else:
+        _print_change(workspace, report, episode)
+    workspace.close()
+
+
+def _change_json(report) -> dict:
+    cs = report.changeset
+    return {
+        "base_commit": report.base_commit, "head_commit": report.head_commit,
+        "commits": [c.commit_sha for c in report.commits],
+        "entity_changes": [
+            {"change_type": c.change_type, "entity": c.entity_after or c.entity_before,
+             "path": c.path_after or c.path_before, "confidence": c.confidence}
+            for c in report.entity_changes
+        ],
+        "patch_id": cs.patch_id if cs else None,
+        "entity_fingerprint": cs.entity_fingerprint if cs else None,
+        "notes": report.notes,
+    }
+
+
+def _print_change(workspace, report, episode: Optional[str]) -> None:
+    typer.echo(f"# {report.base_commit or '(root)'}..{report.head_commit or '(working tree)'}")
+    for note in report.notes:
+        typer.echo(f"# note: {note}")
+    for c in report.commits:
+        typer.echo(f"  commit {c.commit_sha[:10]}  {c.message}")
+    for c in report.entity_changes:
+        label = _entity_label(workspace, c.entity_after or c.entity_before) \
+            if (c.entity_after or c.entity_before) else (c.path_after or c.path_before)
+        typer.echo(f"  {c.change_type:<18} {label}  ({c.confidence:.2f})")
+    if report.changeset:
+        typer.echo(f"# patch_id={report.changeset.patch_id} "
+                   f"fingerprint={report.changeset.entity_fingerprint}")
+    if episode:
+        typer.echo(f"# recorded against {episode}")
+
+
+@app.command()
+def history(
+    entity_id: str = typer.Argument(..., help="Entity id or name."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Why an entity changed: episodes, decisions, and recorded changes."""
+    workspace = _open()
+    result = _temporal(workspace).entity_history(entity_id)
+    if "error" in result:
+        typer.echo(result["error"])
+        workspace.close()
+        raise typer.Exit(code=1)
+    if as_json:
+        typer.echo(json.dumps(_history_json(result), indent=2))
+    else:
+        _print_history(result)
+    workspace.close()
+
+
+def _history_json(result: dict) -> dict:
+    return {
+        "entity_id": result["entity_id"],
+        "episodes": [e.id for e in result["episodes"]],
+        "decisions": [{"statement": d.statement, "status": d.status,
+                       "confirmation": d.confirmation} for d in result["decisions"]],
+        "changes": [{"change_type": c.change_type, "commit": c.commit_sha}
+                    for c in result["changes"]],
+    }
+
+
+def _print_history(result: dict) -> None:
+    typer.echo(f"# {result['entity_id']}")
+    if not (result["episodes"] or result["decisions"] or result["changes"]):
+        typer.echo("  (no recorded history)")
+        return
+    for ep in result["episodes"]:
+        typer.echo(f"  episode {ep.id} [{ep.status}] — {ep.title}")
+    for d in result["decisions"]:
+        flag = "" if d.status != "superseded" else " (superseded)"
+        typer.echo(f"  decision [{d.status}/{d.confirmation}]{flag}: {d.statement}")
+    for c in result["changes"]:
+        where = f" in {c.commit_sha[:10]}" if c.commit_sha else ""
+        typer.echo(f"  change {c.change_type}{where}")
+
+
+episode_app = typer.Typer(add_completion=False, help="Create and manage change episodes.")
+app.add_typer(episode_app, name="episode")
+
+
+@episode_app.command("new")
+def episode_new(
+    title: str = typer.Argument(...),
+    problem: Optional[str] = typer.Option(None, "--problem"),
+    goal: Optional[str] = typer.Option(None, "--goal"),
+    status: str = typer.Option("draft", "--status"),
+) -> None:
+    """Create a change episode."""
+    workspace = _open()
+    ep = _temporal(workspace).new_episode(title, problem, goal, status)
+    typer.echo(ep.id)
+    workspace.close()
+
+
+@episode_app.command("list")
+def episode_list(status: Optional[str] = typer.Option(None, "--status")) -> None:
+    """List change episodes."""
+    workspace = _open()
+    from beagle.temporal import TemporalRepository
+
+    for ep in TemporalRepository(workspace.db).list_episodes(status):
+        typer.echo(f"{ep.id}  [{ep.status}]  {ep.title}")
+    workspace.close()
+
+
+@episode_app.command("show")
+def episode_show(
+    episode_id: str = typer.Argument(...),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Show an episode with its decisions, alternatives, commits, and changes."""
+    workspace = _open()
+    bundle = _temporal(workspace).episode_bundle(episode_id)
+    if bundle is None:
+        typer.echo(f"no episode: {episode_id}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(_episode_json(bundle), indent=2) if as_json
+               else _episode_text(bundle))
+    workspace.close()
+
+
+def _episode_json(bundle: dict) -> dict:
+    ep = bundle["episode"]
+    return {
+        "id": ep.id, "title": ep.title, "status": ep.status,
+        "problem": ep.problem, "goal": ep.goal, "outcome": ep.outcome,
+        "base_commit": ep.base_commit, "head_commit": ep.head_commit,
+        "decisions": [{"id": d.id, "statement": d.statement, "status": d.status,
+                       "rationale": d.rationale, "superseded_by": d.superseded_by,
+                       "confirmation": d.confirmation} for d in bundle["decisions"]],
+        "alternatives": [{"description": a.description, "reason": a.rejection_reason}
+                         for a in bundle["alternatives"]],
+        "commits": [c.commit_sha for c in bundle["commits"]],
+        "changes": [{"change_type": c.change_type, "entity": c.entity_after or c.entity_before}
+                    for c in bundle["changes"]],
+        "followups": [{"description": f.description, "status": f.status}
+                      for f in bundle["followups"]],
+    }
+
+
+def _episode_text(bundle: dict) -> str:
+    ep = bundle["episode"]
+    lines = [f"# {ep.id} [{ep.status}] — {ep.title}"]
+    for label, value in (("problem", ep.problem), ("goal", ep.goal), ("outcome", ep.outcome)):
+        if value:
+            lines.append(f"{label}: {value}")
+    for d in bundle["decisions"]:
+        sup = f" -> {d.superseded_by}" if d.superseded_by else ""
+        lines.append(f"decision [{d.status}/{d.confirmation}]{sup}: {d.statement}")
+    for a in bundle["alternatives"]:
+        lines.append(f"rejected: {a.description}" + (f" — {a.rejection_reason}" if a.rejection_reason else ""))
+    for c in bundle["commits"]:
+        lines.append(f"commit {c.commit_sha[:10]}")
+    for f in bundle["followups"]:
+        lines.append(f"follow-up [{f.status}]: {f.description}")
+    return "\n".join(lines)
+
+
+@episode_app.command("decision")
+def episode_decision(
+    episode_id: str = typer.Argument(...),
+    statement: str = typer.Argument(...),
+    rationale: Optional[str] = typer.Option(None, "--rationale"),
+    status: str = typer.Option("accepted", "--status"),
+) -> None:
+    """Record an accepted (or proposed/rejected) decision."""
+    workspace = _open()
+    d = _temporal(workspace).add_decision(episode_id, statement, rationale, status)
+    typer.echo(d.id)
+    workspace.close()
+
+
+@episode_app.command("supersede")
+def episode_supersede(
+    episode_id: str = typer.Argument(...),
+    old_decision: str = typer.Argument(..., help="Decision id being replaced."),
+    statement: str = typer.Argument(...),
+    rationale: Optional[str] = typer.Option(None, "--rationale"),
+) -> None:
+    """Replace an earlier decision; the old one is kept and labelled superseded."""
+    workspace = _open()
+    d = _temporal(workspace).supersede_decision(old_decision, episode_id, statement, rationale)
+    typer.echo(d.id)
+    workspace.close()
+
+
+@episode_app.command("alternative")
+def episode_alternative(
+    episode_id: str = typer.Argument(...),
+    description: str = typer.Argument(...),
+    reason: Optional[str] = typer.Option(None, "--reason"),
+) -> None:
+    """Record a rejected alternative."""
+    workspace = _open()
+    a = _temporal(workspace).add_alternative(episode_id, description, reason)
+    typer.echo(a.id)
+    workspace.close()
+
+
+@episode_app.command("followup")
+def episode_followup(
+    episode_id: str = typer.Argument(...),
+    description: str = typer.Argument(...),
+    priority: str = typer.Option("normal", "--priority"),
+) -> None:
+    """Record follow-up work."""
+    workspace = _open()
+    f = _temporal(workspace).add_followup(episode_id, description, priority)
+    typer.echo(f.id)
+    workspace.close()
+
+
+@episode_app.command("finalize")
+def episode_finalize(
+    episode_id: str = typer.Argument(...),
+    status: str = typer.Option("implemented", "--status"),
+    outcome: Optional[str] = typer.Option(None, "--outcome"),
+) -> None:
+    """Finalize an episode (implemented | abandoned | superseded)."""
+    workspace = _open()
+    ep = _temporal(workspace).finalize_episode(episode_id, status, outcome)
+    if ep is None:
+        typer.echo(f"no episode: {episode_id}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    typer.echo(f"{ep.id} -> {ep.status}")
+    workspace.close()
+
+
+@episode_app.command("attach")
+def episode_attach(
+    episode_id: str = typer.Argument(...),
+    commit: str = typer.Argument(...),
+    note: bool = typer.Option(True, "--note/--no-note", help="Write a git note."),
+) -> None:
+    """Attach a commit's changes to an episode (and optionally a git note)."""
+    workspace = _open()
+    counts = _temporal(workspace).attach_commit(commit, episode_id, write_note=note)
+    typer.echo(f"recorded {counts['entity_changes']} entity changes from {commit[:10]}")
+    workspace.close()
+
+
 @app.command()
 def mcp() -> None:
     """Run the read-only MCP server over stdio for Claude Code."""

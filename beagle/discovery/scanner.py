@@ -17,7 +17,18 @@ from beagle.models import DiscoveredFile
 
 # Files beagle is willing to look at. ``.py`` covers source, tests, and
 # ``hooks.py``; ``.json`` carries Frappe DocType schema (used from stage 4).
-_EXTENSIONS = {".py": "python", ".json": "json"}
+# JS/TS/Vue carry Desk client scripts, portal code, and frappe-ui frontends
+# (design/14); they are parsed for structure and frontend->backend calls.
+_EXTENSIONS = {
+    ".py": "python",
+    ".json": "json",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".vue": "vue",
+}
 
 # Always pruned, regardless of .gitignore.
 _DEFAULT_IGNORES = [
