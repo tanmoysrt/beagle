@@ -487,9 +487,12 @@ def trace(
 @app.command()
 def mcp() -> None:
     """Run the read-only MCP server over stdio for Claude Code."""
+    import os
+
     from beagle.mcp.server import build_server
 
-    workspace = _open()
+    root = os.environ.get("BEAGLE_ROOT")
+    workspace = _open(Path(root) if root else None)
     build_server(workspace).run()
 
 
