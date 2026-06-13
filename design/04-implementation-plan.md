@@ -211,3 +211,31 @@ MCP: `event_handlers`, `lifecycle`, `trace`.
       (no child lifecycle, db_set ≠ save, set_value ≠ operation, override uncertain).
 - [ ] Full 30+ manually-verified real-repo lifecycle gold cases with accuracy
       gates — seeded/validated on press by hand; formal gold set not yet authored.
+
+## Design 11 — Issue investigation and context compilation — DONE (benchmarks partial)
+
+Most of the pipeline shipped in Stage 7 (`investigate`) and Stage 9 (context).
+This design added the remaining pieces:
+
+- [x] Deterministic query term expansion (curated synonyms + plural/singular),
+      kept separate from concept terms so a derived word never outranks an
+      exact match (`investigate/issue.py`, `IssueQuery.expansions`).
+- [x] Framework-lifecycle section: implicit Frappe lifecycle expanded for
+      resolved document operations on cited candidates (LifecycleService wired
+      into `Investigator`; omitted gracefully when no service is supplied).
+- [x] Structured result (§12): `primary_workflows`, `conditions`,
+      `state_changes`, `external_boundaries`, `framework_events`, `tests`,
+      `change_points`, `unknowns`, `sources` (with score + reasons).
+- [x] Compact / source / mermaid output modes; deterministic node-capped
+      `investigate/mermaid.py` (solid call, dashed lifecycle/boundary).
+- [x] CLI flags: `--compact`, `--include-source`, `--mermaid`,
+      `--show-query-terms`, `--show-scores`, `--show-paths`, `--show-unknowns`.
+- [x] MCP `investigate(query, max_tokens, include_source, include_mermaid)` —
+      compact structured result by default (§17).
+- [x] `investigate` context-compiler intent (§11).
+- [~] Path-type labels and multiple-workflow ranking — single ranked workflow
+      with a reason; per-hop path-type labelling is partial.
+- [~] Category token budgets (§11 percentages) — investigate uses a cite cap,
+      not per-category budget rebalancing.
+- [ ] §19 synthetic ranking-benchmark matrix and §20 20+ real gold issues
+      (TLS verified by hand; formal labelled corpus + accuracy gates not authored).

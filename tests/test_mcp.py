@@ -78,10 +78,18 @@ def test_context(tools):
 
 
 def test_investigate(tools):
+    # MCP defaults to the compact structured result (design/11 §17).
     report = tools.investigate("Worker run calls helper")
-    titles = {s["title"] for s in report["sections"]}
-    assert "Likely area" in titles
-    assert "Source ranges" in titles
+    assert "primary_workflows" in report
+    assert "sources" in report and report["sources"]
+    assert "mermaid" not in report  # only when requested
+
+
+def test_investigate_with_source_and_mermaid(tools):
+    report = tools.investigate("Worker run calls helper",
+                               include_source=True, include_mermaid=True)
+    assert "flowchart TD" in report["mermaid"]
+    assert report["source"]  # entity_id -> source text
 
 
 def test_explain_function(tools):

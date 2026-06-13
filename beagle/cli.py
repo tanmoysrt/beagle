@@ -7,6 +7,7 @@ result. No parsing, resolution, or SQL lives here.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -285,7 +286,7 @@ def _resolve_field(workspace: Workspace, ref: str):
 def context(
     query: str = typer.Option(..., "--query", "-q", help="The question."),
     intent: str = typer.Option("understand", "--intent",
-                               help="locate | understand | change | debug | test"),
+                               help="locate | understand | change | debug | test | investigate"),
     max_tokens: int = typer.Option(6000, "--max-tokens"),
 ) -> None:
     """Compile an intent-shaped, budget-bounded context bundle."""
@@ -311,25 +312,81 @@ def investigate(
     query: Optional[str] = typer.Argument(None, help="Issue text."),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="Read issue from a file."),
     max_tokens: int = typer.Option(6000, "--max-tokens"),
+    compact: bool = typer.Option(False, "--compact", help="Emit the structured JSON result."),
+    include_source: bool = typer.Option(False, "--include-source", help="Append cited source."),
+    mermaid: bool = typer.Option(False, "--mermaid", help="Append a compact Mermaid diagram."),
+    show_query_terms: bool = typer.Option(False, "--show-query-terms"),
+    show_scores: bool = typer.Option(False, "--show-scores"),
+    show_paths: bool = typer.Option(False, "--show-paths"),
+    show_unknowns: bool = typer.Option(False, "--show-unknowns"),
 ) -> None:
     """Turn an issue into an evidence-backed map of the relevant code."""
-    from beagle.investigate import Investigator
+    from beagle.investigate import Investigator, render_investigation
+    from beagle.lifecycle import LifecycleService
 
     text = file.read_text(encoding="utf-8") if file else query
     if not text:
         typer.echo("provide issue text or --file")
         raise typer.Exit(code=1)
     workspace = _open()
-    inv = Investigator(workspace.repo, GraphService(workspace.repo),
-                       SearchEngine(workspace.db), workspace.read_range)
+    graph = GraphService(workspace.repo)
+    inv = Investigator(workspace.repo, graph, SearchEngine(workspace.db),
+                       workspace.read_range, LifecycleService(workspace.repo, graph))
     report = inv.investigate(text, max_tokens=max_tokens)
+    debug = {"terms": show_query_terms, "scores": show_scores,
+             "paths": show_paths, "unknowns": show_unknowns}
+    if compact:
+        typer.echo(json.dumps(report.data, indent=2))
+    else:
+        _print_investigation(report, debug)
+    if mermaid:
+        typer.echo("\n```mermaid")
+        typer.echo(render_investigation(report.data))
+        typer.echo("```")
+    if include_source:
+        _print_cited_source(workspace, report)
+    workspace.close()
+
+
+def _print_investigation(report, debug: dict) -> None:
+    if debug["terms"]:
+        q = report.query
+        typer.echo(f"# terms={sorted(q.terms)} ids={sorted(q.identifiers)} "
+                   f"numbers={sorted(q.numbers)} expansions={sorted(q.expansions)}")
     for note in report.notes:
         typer.echo(f"# note: {note}")
+    if any(debug[k] for k in ("scores", "paths", "unknowns")):
+        _print_debug(report, debug)
+        return
     for section in report.sections:
         typer.echo(f"\n## {section.title}")
         for line in section.lines or ["(none found)"]:
             typer.echo(f"  {line}")
-    workspace.close()
+
+
+def _print_debug(report, debug: dict) -> None:
+    if debug["scores"]:
+        typer.echo("\n## Scores")
+        for src in report.data["sources"]:
+            typer.echo(f"  {src['score']:>6}  {src['name']}  — {'; '.join(src['reasons'])}")
+    if debug["paths"]:
+        typer.echo("\n## Paths")
+        for wf in report.data["primary_workflows"]:
+            typer.echo(f"  ({wf['reason']}) " + " -> ".join(wf["steps"]))
+    if debug["unknowns"]:
+        typer.echo("\n## Unknowns")
+        for line in report.data["unknowns"] or ["(none)"]:
+            typer.echo(f"  {line}")
+
+
+def _print_cited_source(workspace, report) -> None:
+    typer.echo("\n## Cited source")
+    for entity_id, path, start, end in report.cited:
+        typer.echo(f"\n# {entity_id}  {path}:{start}-{end}")
+        try:
+            typer.echo(workspace.read_range(path, start, end))
+        except OSError:
+            typer.echo("# (source unavailable)")
 
 
 @app.command()

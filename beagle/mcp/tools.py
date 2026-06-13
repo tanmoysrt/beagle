@@ -145,17 +145,30 @@ class BeagleTools:
             ],
         }
 
-    def investigate(self, query: str, max_tokens: int = 6000) -> dict:
-        inv = Investigator(self.ws.repo, self.graph, self.search_engine, self.ws.read_range)
+    def investigate(self, query: str, max_tokens: int = 6000,
+                    include_source: bool = False, include_mermaid: bool = False) -> dict:
+        from beagle.investigate import render_investigation
+
+        lifecycle = LifecycleService(self.ws.repo, self.graph)
+        inv = Investigator(self.ws.repo, self.graph, self.search_engine,
+                           self.ws.read_range, lifecycle)
         report = inv.investigate(query, max_tokens=max_tokens)
-        return {
-            "notes": report.notes,
-            "sections": [{"title": s.title, "lines": s.lines} for s in report.sections],
-            "cited": [
-                {"entity_id": e, "path": p, "start_line": s, "end_line": en}
-                for e, p, s, en in report.cited
-            ],
-        }
+        # Compact by default (design/11 §17): the structured result. Claude can
+        # request source ranges or a diagram in a follow-up call.
+        result = {"notes": report.notes, **report.data}
+        if include_mermaid:
+            result["mermaid"] = render_investigation(report.data)
+        if include_source:
+            result["source"] = {
+                e: self._safe_read(p, s, en) for e, p, s, en in report.cited
+            }
+        return result
+
+    def _safe_read(self, path: str, start: int, end: int) -> str:
+        try:
+            return self.ws.read_range(path, start, end)
+        except OSError:
+            return ""
 
     def explain_function(self, entity: str, include_mermaid: bool = False,
                          expand_calls: int = 0) -> dict:

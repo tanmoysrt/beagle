@@ -21,6 +21,10 @@ from beagle.search.graph import GraphService
 
 _CODE_KINDS = ("function", "method", "test_function")
 _SIGNAL_KINDS = ("comparison", "counter", "raise", "except", "call", "assignment")
+_OPERATION_RELS = (
+    "SAVES_DOCTYPE", "INSERTS_DOCTYPE", "SUBMITS_DOCTYPE",
+    "CANCELS_DOCTYPE", "DB_SETS_DOCTYPE", "DELETES_DOCTYPE",
+)
 _SUBPROCESS = {"subprocess.run", "subprocess.Popen", "subprocess.check_output",
                "subprocess.call", "subprocess.check_call", "os.system", "os.popen"}
 _CANDIDATE_CAP = 40
@@ -48,6 +52,7 @@ class EntitySignals:
     tests: list[str] = field(default_factory=list)
     unresolved_calls: list[str] = field(default_factory=list)
     callees: list[str] = field(default_factory=list)
+    operations: list[tuple[str, str]] = field(default_factory=list)  # (relationship, doctype_id)
 
 
 @dataclass
@@ -70,14 +75,20 @@ class InvestigationReport:
     sections: list[ReportSection] = field(default_factory=list)
     cited: list[tuple[str, str, int, int]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    data: dict = field(default_factory=dict)  # structured result (design/11 §12)
 
 
 class Investigator:
-    def __init__(self, repo, graph: GraphService, search: SearchEngine, reader):
+    def __init__(self, repo, graph: GraphService, search: SearchEngine, reader,
+                 lifecycle=None):
         self.repo = repo
         self.graph = graph
         self.search = search
         self.reader = reader
+        # Optional: when present, implicit Frappe lifecycle is expanded for
+        # resolved document operations (design/11 §10). Investigate still works
+        # without it — the section is simply omitted.
+        self.lifecycle = lifecycle
 
     def investigate(self, text: str, max_tokens: int = 6000) -> InvestigationReport:
         query = parse_issue(text)
@@ -89,12 +100,14 @@ class Investigator:
         candidates = self._build_candidates(query, seeds)
         candidates.sort(key=lambda c: -c.score)
         cited = candidates[:_CITE_CAP]
-        report.sections = self._sections(query, cited)
+        framework = self._framework(cited)
+        report.sections = self._sections(query, cited, framework)
         report.cited = [
             (c.entity.id, c.entity.owner_file, c.entity.source_range.start_line,
              c.entity.source_range.end_line)
             for c in cited
         ]
+        report.data = self._structured(query, cited, framework)
         return report
 
     # --- seeding -------------------------------------------------------
@@ -114,6 +127,12 @@ class Investigator:
             for result in self.search.search(q, limit=20, prefix=True):
                 for eid in self._hit_entities(result):
                     bump(eid, 1.5, "lexical match")
+        # Expanded variants seed weakly — they widen recall without letting a
+        # derived word outrank an exact concept match.
+        for variant in query.expansions:
+            for result in self.search.search(variant, limit=10, prefix=True):
+                for eid in self._hit_entities(result):
+                    bump(eid, 0.5, f"variant match: {variant}")
         return seeds
 
     def _hit_entities(self, result) -> list[str]:
@@ -212,6 +231,9 @@ class Investigator:
             (sig.callees if e.target_id else sig.unresolved_calls).append(
                 e.target_id or e.target_hint or "?"
             )
+        for e in self.repo.edges_from(entity_id, _OPERATION_RELS):
+            if e.target_id:
+                sig.operations.append((e.relationship, e.target_id))
         sig.tests = [e.source_id for e in self.graph.tests(entity_id)]
 
     def _score(self, base: float, query, sig: EntitySignals) -> tuple[float, list[str]]:
@@ -243,7 +265,7 @@ class Investigator:
 
     # --- sections ------------------------------------------------------
 
-    def _sections(self, query, cited: list[Candidate]) -> list[ReportSection]:
+    def _sections(self, query, cited: list[Candidate], framework: list[dict]) -> list[ReportSection]:
         return [
             self._likely_area(cited),
             self._entrypoints(cited),
@@ -252,11 +274,72 @@ class Investigator:
             self._failure_handling(cited),
             self._state_changes(cited),
             self._external(cited),
+            self._framework_section(framework),
             self._tests_section(cited),
             self._change_points(cited),
             self._unknowns(query, cited),
             self._source_ranges(cited),
         ]
+
+    _OP_VERB = {
+        "SAVES_DOCTYPE": "saves", "INSERTS_DOCTYPE": "inserts",
+        "SUBMITS_DOCTYPE": "submits", "CANCELS_DOCTYPE": "cancels",
+        "DB_SETS_DOCTYPE": "db_set on", "DELETES_DOCTYPE": "deletes",
+    }
+
+    def _framework(self, cited: list[Candidate]) -> list[dict]:
+        """Implicit Frappe lifecycle for resolved operations (design/11 §10)."""
+        if self.lifecycle is None:
+            return []
+        out, seen = [], set()
+        for c in cited[:8]:
+            for rel, doctype_id in c.signals.operations:
+                key = (rel, doctype_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(self._expand_lifecycle(c.entity.id, rel, doctype_id))
+        return out
+
+    def _expand_lifecycle(self, caller_id: str, rel: str, doctype_id: str) -> dict:
+        events = [e.name for e in self.lifecycle.policy.events_for(rel)]
+        handlers = self._terminal_handlers(doctype_id, events)
+        return {
+            "caller": caller_id, "caller_name": self._short(caller_id),
+            "operation": self._OP_VERB.get(rel, rel),
+            "doctype": self._doctype_name(doctype_id), "doctype_id": doctype_id,
+            "events": events, "handlers": handlers,
+        }
+
+    def _terminal_handlers(self, doctype_id: str, events: list[str]) -> list[str]:
+        targets = []
+        for name in events:
+            if name not in self.lifecycle.policy.dispatch_events:
+                continue
+            dispatch = self.lifecycle.event_handlers(doctype_id, name)
+            if dispatch is None:
+                continue
+            if dispatch.controller and dispatch.controller.target_id:
+                targets.append(dispatch.controller.target_id)
+            targets.extend(h.target_id for h in (*dispatch.exact, *dispatch.wildcard)
+                           if h.target_id)
+        return list(dict.fromkeys(targets))
+
+    def _doctype_name(self, doctype_id: str) -> str:
+        entity = self.repo.get_entity(doctype_id)
+        return entity.name if entity else doctype_id.rsplit("/", 1)[-1]
+
+    def _framework_section(self, framework: list[dict]) -> ReportSection:
+        section = ReportSection("Framework lifecycle")
+        for fw in framework:
+            caller = self._short(fw["caller"])
+            section.lines.append(
+                f"{caller} {fw['operation']} {fw['doctype']}: "
+                + " -> ".join(fw["events"])
+            )
+            for handler in fw["handlers"]:
+                section.lines.append(f"    handler: {self._short(handler)}")
+        return section
 
     def _loc(self, c: Candidate) -> str:
         r = c.entity.source_range
@@ -371,3 +454,44 @@ class Investigator:
     def _short(self, entity_id: str) -> str:
         entity = self.repo.get_entity(entity_id)
         return entity.qualified_name if entity else entity_id
+
+    # --- structured result (design/11 §12) ----------------------------
+
+    def _ref(self, entity) -> dict:
+        r = entity.source_range
+        return {"entity_id": entity.id, "name": entity.qualified_name,
+                "path": entity.owner_file, "start_line": r.start_line,
+                "end_line": r.end_line}
+
+    def _structured(self, query, cited: list[Candidate], framework: list[dict]) -> dict:
+        return {
+            "query": query.text,
+            "primary_workflows": self._wf_data(cited),
+            "conditions": [{"text": t, "where": self._short(c.entity.id)}
+                           for c in cited for t in c.signals.thresholds],
+            "state_changes": [{"change": w, "where": self._short(c.entity.id)}
+                              for c in cited for w in c.signals.status_writes]
+                             + [{"change": f"writes {dt}", "where": self._short(c.entity.id)}
+                                for c in cited for dt in sorted(c.signals.doctype_writes)],
+            "external_boundaries": [{"command": cmd, "where": self._short(c.entity.id)}
+                                    for c in cited for cmd in c.signals.commands],
+            "framework_events": framework,
+            "tests": list(dict.fromkeys(t for c in cited for t in c.signals.tests)),
+            "change_points": [self._ref(c.entity) for c in cited
+                              if c.signals.thresholds or c.signals.counters
+                              or c.signals.status_writes],
+            "unknowns": self._unknowns(query, cited).lines,
+            "sources": [{**self._ref(c.entity), "score": round(c.score, 2),
+                         "reasons": c.reasons} for c in cited],
+        }
+
+    def _wf_data(self, cited: list[Candidate]) -> list[dict]:
+        if not cited:
+            return []
+        start = next((c for c in cited
+                      if c.signals.is_endpoint or c.signals.driven_by_hook_or_job), cited[0])
+        chain = self._callee_chain(start.entity.id)
+        reason = ("scheduler/hook/endpoint entrypoint"
+                  if start.signals.is_endpoint or start.signals.driven_by_hook_or_job
+                  else "highest-ranked candidate")
+        return [{"reason": reason, "steps": [self._short(i) for i in chain]}]

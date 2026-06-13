@@ -24,22 +24,47 @@ GENERIC = {
 }
 
 
+# Small, deterministic domain variants (design/11 §3: "Keep expansion small. Do
+# not generate dozens of speculative synonyms"). Only well-known Frappe/ops terms.
+_SYNONYMS = {
+    "renewal": {"renew", "renewed"},
+    "renew": {"renewal", "renewed"},
+    "certbot": {"certbot", "letsencrypt"},
+    "scheduler": {"scheduled", "schedule"},
+    "scheduled": {"scheduler", "schedule"},
+    "expiry": {"expired", "expire", "expiration"},
+    "expire": {"expiry", "expired", "expiration"},
+    "validation": {"validate", "invalid"},
+}
+
+
 @dataclass
 class IssueQuery:
     text: str
     identifiers: set[str] = field(default_factory=set)
     numbers: set[str] = field(default_factory=set)
     terms: set[str] = field(default_factory=set)
+    expansions: set[str] = field(default_factory=set)
 
     @property
     def all_search_terms(self) -> list[str]:
-        return sorted(self.identifiers | self.terms | self.numbers)
+        return sorted(self.identifiers | self.terms | self.numbers | self.expansions)
 
 
 def _looks_like_identifier(token: str) -> bool:
     if "." in token or "_" in token:
         return True
     return any(c.isupper() for c in token[1:])  # CamelCase
+
+
+def _variants(term: str) -> set[str]:
+    """Deterministic plural/singular + curated synonym variants for one term."""
+    out = set(_SYNONYMS.get(term, set()))
+    if term.endswith("s") and len(term) > 3:
+        out.add(term[:-1])
+    else:
+        out.add(term + "s")
+    return {v for v in out if len(v) > 2 and v != term}
 
 
 def parse_issue(text: str) -> IssueQuery:
@@ -52,4 +77,9 @@ def parse_issue(text: str) -> IssueQuery:
         low = word.lower()
         if low not in GENERIC and word not in query.identifiers:
             query.terms.add(low)
+    # Expand only off concept terms; keep variants separate so concept-count
+    # scoring stays anchored on the words the user actually wrote.
+    for term in query.terms:
+        query.expansions |= _variants(term)
+    query.expansions -= query.terms
     return query

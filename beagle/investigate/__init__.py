@@ -1,4 +1,8 @@
 from beagle.investigate.issue import IssueQuery, parse_issue
 from beagle.investigate.investigator import InvestigationReport, Investigator
+from beagle.investigate.mermaid import render as render_investigation
 
-__all__ = ["IssueQuery", "parse_issue", "Investigator", "InvestigationReport"]
+__all__ = [
+    "IssueQuery", "parse_issue", "Investigator", "InvestigationReport",
+    "render_investigation",
+]

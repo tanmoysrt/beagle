@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from beagle.investigate import Investigator, parse_issue
+from beagle.investigate import Investigator, parse_issue, render_investigation
+from beagle.lifecycle import LifecycleService
 from beagle.search import SearchEngine
 from beagle.search.graph import GraphService
 from beagle.workspace import Workspace
@@ -71,7 +72,9 @@ def repo(tmp_path: Path):
 
 
 def _investigator(ws):
-    return Investigator(ws.repo, GraphService(ws.repo), SearchEngine(ws.db), ws.read_range)
+    graph = GraphService(ws.repo)
+    return Investigator(ws.repo, graph, SearchEngine(ws.db), ws.read_range,
+                        LifecycleService(ws.repo, graph))
 
 
 def section(report, title):
@@ -123,3 +126,47 @@ def test_entrypoint_detected(repo):
 def test_source_ranges_present(repo):
     report = _investigator(repo).investigate("certificate renewal 5 attempts")
     assert section(report, "Source ranges").lines
+
+
+# --- design/11 additions ---------------------------------------------
+
+def test_query_expansion_is_small_and_separate():
+    q = parse_issue("certificate renewal fails")
+    # renewal -> renew via curated synonym; variants never pollute concept terms
+    assert "renew" in q.expansions
+    assert "renewal" in q.terms
+    assert not (q.terms & q.expansions)
+
+
+def test_structured_result_has_section_12_keys(repo):
+    report = _investigator(repo).investigate("certificate renewal stops after 5 attempts")
+    data = report.data
+    for key in ("query", "primary_workflows", "conditions", "state_changes",
+                "external_boundaries", "framework_events", "tests",
+                "change_points", "unknowns", "sources"):
+        assert key in data
+    assert data["sources"] and "score" in data["sources"][0]
+
+
+def test_framework_lifecycle_expanded_for_save(repo):
+    report = _investigator(repo).investigate("certificate renewal saves the document")
+    events = report.data["framework_events"]
+    # Certificate.renew calls self.save() -> implicit lifecycle on TLS Certificate
+    assert any(fw["doctype"] == "TLS Certificate" and "validate" in fw["events"]
+               for fw in events)
+    lines = " ".join(section(report, "Framework lifecycle").lines)
+    assert "on_change" in lines
+
+
+def test_mermaid_renders_from_evidence(repo):
+    report = _investigator(repo).investigate("certificate renewal stops after 5 attempts")
+    diagram = render_investigation(report.data)
+    assert diagram.startswith("flowchart TD")
+    assert diagram.count("\n") <= 60  # compact, node-capped
+
+
+def test_lifecycle_omitted_without_service(repo):
+    graph = GraphService(repo.repo)
+    inv = Investigator(repo.repo, graph, SearchEngine(repo.db), repo.read_range)
+    report = inv.investigate("certificate renewal saves the document")
+    assert report.data["framework_events"] == []

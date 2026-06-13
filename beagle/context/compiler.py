@@ -26,6 +26,9 @@ _INTENTS = {
     "change": {"callees": 4, "callers": 8, "tests": 4, "related": 4},
     "debug": {"callees": 8, "callers": 6, "tests": 2, "related": 4},
     "test": {"callees": 2, "callers": 0, "tests": 8, "related": 2},
+    # design/11 §11: issue-shaped context — wide downstream + upstream reach so
+    # the compiled bundle spans a probable workflow, not just one symbol.
+    "investigate": {"callees": 8, "callers": 6, "tests": 3, "related": 6},
 }
 _MAX_EXCERPT_LINES = 60
 
