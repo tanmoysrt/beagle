@@ -1,6 +1,11 @@
+<img src="assets/logo.svg" alt="beagle logo" width="72" align="left" />
+
 # beagle
 
 Local code-discovery engine for Python and Frappe projects. No LLM required.
+
+<br clear="left" />
+
 
 `beagle` indexes a repo into a local SQLite graph, then answers questions about
 symbols, callers, callees, hooks, jobs, DocTypes, lifecycle events, and the
