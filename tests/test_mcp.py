@@ -98,6 +98,20 @@ def test_explain_function(tools):
     assert "flowchart TD" in result["mermaid"]
 
 
+def test_function_context(tools):
+    card = tools.function_context("python://pkg.worker#Worker.run", include_mermaid=True)
+    assert card["identity"]["entity_id"] == "python://pkg.worker#Worker.run"
+    assert "responsibility" in card and "unknowns" in card
+    # Worker.run calls helper() -> an important business call
+    assert any(c["name"].endswith("helper()") or "helper" in c["name"] for c in card["calls"])
+    assert "flowchart TD" in card["mermaid"]
+
+
+def test_function_context_ambiguous(tools):
+    card = tools.function_context("nope_zzz")
+    assert "error" in card
+
+
 def test_trace_tool(tools):
     # pure-python fixture: no document operations, but the tool must still answer
     result = tools.trace("python://pkg.worker#Worker.run", depth=1)

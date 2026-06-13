@@ -156,8 +156,9 @@ Returns entities, inclusion reasons, confidence, paths, ranges, and excerpts: [x
 
 ## Stage 10: MCP — DONE
 
-- [x] Read-only MCP server (17 tools) over all retrieval services, including
-      `investigate` and `explain_function`. Every tool calls a tested service.
+- [x] Read-only MCP server (21 tools) over all retrieval services, including
+      `investigate`, `explain_function`, and `function_context`. Every tool
+      calls a tested service.
 
 ## Stage 11: optional local LLM — DROPPED
 
@@ -249,8 +250,40 @@ This design added the remaining pieces:
 - [x] `investigate` context-compiler intent (§11).
 - [x] Path-type labels — each workflow hop carries its type (`call`,
       `job dispatch`, `lifecycle: <op>`); rendered as Mermaid edge labels.
-- [~] Multiple-workflow ranking — still a single ranked workflow with a reason.
-- [~] Category token budgets (§11 percentages) — investigate uses a cite cap,
-      not per-category budget rebalancing.
-- [ ] §19 synthetic ranking-benchmark matrix and §20 20+ real gold issues
-      (TLS verified by hand; formal labelled corpus + accuracy gates not authored).
+- [x] Multiple-workflow ranking — one workflow per distinct entrypoint, ranked
+      by candidate score (`rank` field on each `primary_workflows` entry; cap 3).
+- [x] Category token budgets (§11) — `Investigator._apply_budget` allocates the
+      token budget across sections by importance weight and trims overflow lines;
+      Unknowns and Source ranges are never trimmed.
+- [ ] §19 synthetic ranking-benchmark matrix and §20 20+ real gold issues —
+      synthetic ranking behaviour is covered by unit tests; the formal labelled
+      real-issue corpus + accuracy gates need human verification (deferred, not
+      fabricated, per the correctness rules).
+
+## Design 12 — Function context and Mermaid explanations — DONE (real-repo gold deferred)
+
+Function Context Card built from indexed evidence (`beagle/card/`): no stored
+prose, every item carries a source line, direct and implicit behaviour kept apart.
+
+- [x] Structured context model (`card/model.py`) reusing existing entities,
+      observations, and edges; compact serialization (`card/render.as_dict`).
+- [x] Direct behaviour: decorator/guard/threshold/throw extraction, field and
+      DocType reads, status/field/operation writes, ranked important calls,
+      external-boundary detection (`card/classify.py`), raises/handles/throws.
+- [x] Indirect behaviour: implicit Frappe lifecycle (operation → events →
+      terminal handlers via LifecycleService), background jobs, callers; runtime
+      override order preserved as an explicit unknown.
+- [x] Responsibility inference (action verb + subject + weighted evidence +
+      confidence); returns "(responsibility uncertain)" when evidence is weak.
+- [x] Test association via TESTS edges and test-fn callers.
+- [x] Compact, token-budgeted text renderer (`card/render.py`) and Mermaid
+      renderer (`card/mermaid.py`, solid explicit / dashed lifecycle+boundary,
+      20-node cap, deterministic).
+- [x] CLI `beagle card` (`--compact`/`--mermaid`/`--max-tokens`) and MCP
+      `function_context(entity, include_mermaid, max_tokens)`.
+- [~] Deeper test heuristics (tests asserting the same fields / covering failure
+      paths) — only direct + same-entity tests are associated so far.
+- [~] Context-compiler / search-ranking integration — exposed via CLI and MCP;
+      not yet folded into `context` intents or seed ranking.
+- [ ] 30+ manually-verified real-repo function gold set with accuracy gates —
+      synthetic matrix covered by unit tests; real gold needs human verification.

@@ -374,7 +374,8 @@ def _print_debug(report, debug: dict) -> None:
     if debug["paths"]:
         typer.echo("\n## Paths")
         for wf in report.data["primary_workflows"]:
-            typer.echo(f"  ({wf['reason']}) " + " -> ".join(wf["steps"]))
+            steps = " -> ".join(f"{s['name']} [{s['via']}]" for s in wf["steps"])
+            typer.echo(f"  #{wf.get('rank', 1)} ({wf['reason']}) {steps}")
     if debug["unknowns"]:
         typer.echo("\n## Unknowns")
         for line in report.data["unknowns"] or ["(none)"]:
@@ -437,6 +438,38 @@ def _render_framework_events(workspace, entity_id: str) -> None:
         s = graph.nodes.get(src, (src, ""))[0]
         d = graph.nodes.get(dst, (dst, ""))[0]
         typer.echo(f"  {s}  --{cat}-->  {d}")
+
+
+@app.command()
+def card(
+    entity_id: str = typer.Argument(..., help="Function/method id or name."),
+    compact: bool = typer.Option(False, "--compact", help="Emit the structured JSON card."),
+    mermaid: bool = typer.Option(False, "--mermaid", help="Append a compact behaviour diagram."),
+    max_tokens: int = typer.Option(1500, "--max-tokens", help="Budget for the text card."),
+) -> None:
+    """Build a Function Context Card: evidence-backed responsibility and behaviour."""
+    from beagle.card import ContextCardBuilder, as_dict, render, render_card_mermaid
+    from beagle.lifecycle import LifecycleService
+
+    workspace = _open()
+    graph = GraphService(workspace.repo)
+    builder = ContextCardBuilder(workspace.repo, graph, workspace.read_range,
+                                 LifecycleService(workspace.repo, graph))
+    result = builder.build(entity_id)
+    if result is None:
+        typer.echo(f"no entity matches: {entity_id}")
+        workspace.close()
+        raise typer.Exit(code=1)
+    if compact:
+        typer.echo(json.dumps(as_dict(result), indent=2))
+    else:
+        for line in render(result, max_tokens=max_tokens):
+            typer.echo(line)
+    if mermaid and not result.candidates:
+        typer.echo("\n```mermaid")
+        typer.echo(render_card_mermaid(result))
+        typer.echo("```")
+    workspace.close()
 
 
 @app.command()

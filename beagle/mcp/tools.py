@@ -194,6 +194,20 @@ class BeagleTools:
             ],
         }
 
+    def function_context(self, entity: str, include_mermaid: bool = False,
+                         max_tokens: int = 1500) -> dict:
+        from beagle.card import ContextCardBuilder, as_dict, render_card_mermaid
+
+        lifecycle = LifecycleService(self.ws.repo, self.graph)
+        builder = ContextCardBuilder(self.ws.repo, self.graph, self.ws.read_range, lifecycle)
+        card = builder.build(entity)
+        if card is None:
+            return {"error": f"no entity matches: {entity}"}
+        result = as_dict(card)
+        if include_mermaid and not card.candidates:
+            result["mermaid"] = render_card_mermaid(card)
+        return result
+
     def event_handlers(self, doctype: str, event: str) -> dict:
         service = LifecycleService(self.ws.repo, self.graph)
         dispatch = service.event_handlers(doctype, event)

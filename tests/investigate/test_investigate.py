@@ -184,6 +184,23 @@ def test_mermaid_renders_from_evidence(repo):
     assert diagram.count("\n") <= 60  # compact, node-capped
 
 
+def test_workflows_are_ranked(repo):
+    report = _investigator(repo).investigate("certificate renewal stops after 5 attempts")
+    workflows = report.data["primary_workflows"]
+    assert workflows and workflows[0]["rank"] == 1
+    # ranks are distinct and ascending
+    ranks = [w["rank"] for w in workflows]
+    assert ranks == sorted(ranks)
+
+
+def test_budget_keeps_unknowns_and_source(repo):
+    report = _investigator(repo).investigate("certificate renewal 5 attempts", max_tokens=20)
+    titles = {s.title for s in report.sections}
+    assert "Unknowns" in titles and "Source ranges" in titles
+    # Source ranges is never trimmed away even under a tiny budget
+    assert section(report, "Source ranges").lines
+
+
 def test_lifecycle_omitted_without_service(repo):
     graph = GraphService(repo.repo)
     inv = Investigator(repo.repo, graph, SearchEngine(repo.db), repo.read_range)

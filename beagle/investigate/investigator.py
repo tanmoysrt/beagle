@@ -102,6 +102,7 @@ class Investigator:
         cited = candidates[:_CITE_CAP]
         framework = self._framework(cited)
         report.sections = self._sections(query, cited, framework)
+        self._apply_budget(report.sections, max_tokens)
         report.cited = [
             (c.entity.id, c.entity.owner_file, c.entity.source_range.start_line,
              c.entity.source_range.end_line)
@@ -345,6 +346,40 @@ class Investigator:
         r = c.entity.source_range
         return f"{c.entity.qualified_name}  ({c.entity.owner_file}:{r.start_line}-{r.end_line})"
 
+    # Per-category share of the token budget (design/11 §11). Weights are
+    # relative; sections marked _ALWAYS are never trimmed (uncertainty and the
+    # source map must survive even a tight budget).
+    _SECTION_WEIGHT = {
+        "Likely area": 1, "Primary entrypoints": 3, "Probable workflow": 3,
+        "Retry and stop conditions": 3, "Failure handling": 3,
+        "State and field changes": 3, "External systems and commands": 2,
+        "Framework lifecycle": 2, "Related tests": 2, "Likely change points": 2,
+    }
+    _ALWAYS = ("Unknowns", "Source ranges")
+    _CHARS_PER_TOKEN = 4
+
+    def _apply_budget(self, sections: list[ReportSection], max_tokens: int) -> None:
+        total_weight = sum(self._SECTION_WEIGHT.get(s.title, 1)
+                           for s in sections if s.title not in self._ALWAYS)
+        if total_weight == 0:
+            return
+        for section in sections:
+            if section.title in self._ALWAYS:
+                continue
+            weight = self._SECTION_WEIGHT.get(section.title, 1)
+            self._trim_section(section, max_tokens * weight // total_weight)
+
+    def _trim_section(self, section: ReportSection, token_budget: int) -> None:
+        kept, used = [], 0
+        for line in section.lines:
+            cost = len(line) // self._CHARS_PER_TOKEN + 1
+            if kept and used + cost > token_budget:
+                kept.append(f"... ({len(section.lines) - len(kept)} more omitted for budget)")
+                break
+            kept.append(line)
+            used += cost
+        section.lines = kept
+
     def _likely_area(self, cited) -> ReportSection:
         section = ReportSection("Likely area")
         if cited:
@@ -364,8 +399,7 @@ class Investigator:
 
     def _workflow(self, cited) -> ReportSection:
         section = ReportSection("Probable workflow")
-        path = self._workflow_path(cited)
-        if path:
+        for path in self._workflow_paths(cited):
             parts = [self._short(path[0][0])]
             parts += [f"--({via})--> {self._short(eid)}" for eid, via in path[1:]]
             section.lines.append(" ".join(parts))
@@ -373,13 +407,26 @@ class Investigator:
 
     # Hop priority + label per design/11 §7 path types (don't flatten to "call").
     _HOP_RELS = (("CALLS", "call"), ("ENQUEUES", "job dispatch"))
+    _MAX_WORKFLOWS = 3
+
+    def _workflow_starts(self, cited) -> list[Candidate]:
+        """Distinct entrypoints, ranked by score; fall back to the top candidate."""
+        starts = [c for c in cited
+                  if c.signals.is_endpoint or c.signals.driven_by_hook_or_job]
+        if not starts and cited:
+            starts = [cited[0]]
+        return starts[:self._MAX_WORKFLOWS]
+
+    def _workflow_paths(self, cited) -> list[list[tuple[str, str]]]:
+        paths = [self._workflow_path_from(start.entity.id) for start in self._workflow_starts(cited)]
+        return [p for p in paths if p]
 
     def _workflow_path(self, cited) -> list[tuple[str, str]]:
-        if not cited:
-            return []
-        start = next((c for c in cited
-                      if c.signals.is_endpoint or c.signals.driven_by_hook_or_job), cited[0])
-        path, node, seen = [(start.entity.id, "entrypoint")], start.entity.id, {start.entity.id}
+        paths = self._workflow_paths(cited)
+        return paths[0] if paths else []
+
+    def _workflow_path_from(self, start_id: str) -> list[tuple[str, str]]:
+        path, node, seen = [(start_id, "entrypoint")], start_id, {start_id}
         while len(path) < 6:
             hop = self._next_hop(node, seen)
             if hop is None:
@@ -502,13 +549,15 @@ class Investigator:
         }
 
     def _wf_data(self, cited: list[Candidate]) -> list[dict]:
-        path = self._workflow_path(cited)
-        if not path:
-            return []
-        start = cited[0]
-        reason = ("scheduler/hook/endpoint entrypoint"
-                  if any(c.signals.is_endpoint or c.signals.driven_by_hook_or_job
-                         for c in cited[:1])
-                  else "highest-ranked candidate")
-        steps = [{"name": self._short(eid), "via": via} for eid, via in path]
-        return [{"reason": reason, "steps": steps}]
+        workflows = []
+        for rank, start in enumerate(self._workflow_starts(cited)):
+            path = self._workflow_path_from(start.entity.id)
+            if not path:
+                continue
+            entry = start.signals.is_endpoint or start.signals.driven_by_hook_or_job
+            workflows.append({
+                "rank": rank + 1,
+                "reason": "scheduler/hook/endpoint entrypoint" if entry else "highest-ranked candidate",
+                "steps": [{"name": self._short(eid), "via": via} for eid, via in path],
+            })
+        return workflows
