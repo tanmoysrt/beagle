@@ -1,0 +1,19 @@
+{
+  "_comment": "Seed retrieval cases for the real frappe+press index, verified against a pinned checkout. Extend toward the design/05 target of 50 hand-verified questions across symbol/import, caller/callee, doctype/field, hook/job/endpoint, and end-to-end groups. Run: uv run beagle-bench <root-with-.beagle>.",
+  "exact_symbol": [
+    ["Site", "doctype://press/Site"],
+    ["Bench", "doctype://press/Bench"],
+    ["Agent Job", "doctype://press/Agent Job"],
+    ["Release Group", "doctype://press/Release Group"],
+    ["Deploy Candidate", "doctype://press/Deploy Candidate"],
+    ["Site.archive", "python://press.press.doctype.site.site#Site.archive"],
+    ["Site.backup", "python://press.press.doctype.site.site#Site.backup"],
+    ["Site.reinstall", "python://press.press.doctype.site.site#Site.reinstall"]
+  ],
+  "top5": [
+    ["Site reinstall", "python://press.press.doctype.site.site#Site.reinstall"]
+  ],
+  "edge_exists": [
+    ["doctype://press/Site", "HAS_CONTROLLER", "python://press.press.doctype.site.site#Site"]
+  ]
+}

@@ -1,0 +1,33 @@
+[project]
+name = "beagle"
+version = "0.1.0"
+description = "Local code-discovery engine for Python and Frappe projects"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "libcst>=1.1",
+    "pathspec>=0.12",
+    "typer>=0.12",
+    "mcp>=1.0",
+]
+
+[project.scripts]
+beagle = "beagle.cli:app"
+beagle-mcp = "beagle.mcp.server:main"
+beagle-bench = "beagle.benchmarks.report:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beagle"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
