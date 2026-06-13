@@ -81,6 +81,22 @@ def test_computed_method_is_preserved_without_a_literal():
     assert calls and calls[0]["method"] is None  # fact kept, never guessed
 
 
+def test_fluent_chain_callee_is_recognised():
+    # frappe\n.call(...).then(...) — the callee node text carries newlines and
+    # indentation; it must still classify as frappe.call, not frm.call.
+    js = (
+        "function login(name){\n"
+        "  frappe\n"
+        "    .call({ method: 'press.api.site.login', args: { name } })\n"
+        "    .then((r) => r);\n"
+        "}\n"
+    )
+    calls = _calls(extract_javascript("site.js", js, "javascript"))
+    call = next(c for c in calls if c["method"] == "press.api.site.login")
+    assert call["api"] == "frappe.call"
+    assert call["controller_local"] is False  # resolvable, not a form-local method
+
+
 VUE = '''\
 <template><button @click="save">save</button></template>
 <script lang="ts">

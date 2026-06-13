@@ -180,8 +180,12 @@ class _Extractor:
         arguments = binding.field(node, "arguments")
         if func is None or arguments is None:
             return
+        # Fluent chains (``frappe\n  .call(...)``) put newlines/indentation
+        # inside the callee node's text; collapse it so pattern matching sees
+        # ``frappe.call`` rather than ``frappe\n  .call``.
+        func_text = "".join(binding.text(func, self.source).split())
         target = frappe_api.detect(
-            binding.text(func, self.source), binding.named_children(arguments), self.source
+            func_text, binding.named_children(arguments), self.source
         )
         if target is None:
             return
