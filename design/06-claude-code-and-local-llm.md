@@ -2,7 +2,7 @@
 
 ## MCP tools
 
-Expose:
+Expose (21 tools). Foundational lookup/graph/Frappe-data tools:
 
 ```text
 index_status
@@ -18,9 +18,25 @@ reads_field
 writes_field
 tests
 impact
-context
 read_source
 ```
+
+Synthesis and lifecycle tools (added by later stages):
+
+```text
+context
+investigate
+explain_function
+function_context
+event_handlers
+lifecycle
+trace
+```
+
+`callers`/`callees`/`tests`/`uses_doctype` are intentional filtered views of
+`relations` (high-frequency queries, less noise). `event_handlers` resolves an
+arbitrary event; `lifecycle` enumerates the standard policy events. Each tool
+maps 1:1 to a CLI command — see README.
 
 Keep results compact and return stable entity IDs for follow-up calls.
 
