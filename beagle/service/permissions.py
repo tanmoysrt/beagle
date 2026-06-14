@@ -63,6 +63,13 @@ def require_permission(granted: list[str], needed: str) -> None:
         raise PermissionDenied(f"missing permission: {needed}")
 
 
+# A token whose repository list contains this wildcard may touch any repository
+# in its organization. Convenient for a single-operator/local full-access token.
+ALL_REPOSITORIES = "*"
+
+
 def require_repository(allowed: list[str], repository_slug: str) -> None:
+    if ALL_REPOSITORIES in allowed:
+        return
     if repository_slug not in allowed:
         raise PermissionDenied(f"token not scoped to repository: {repository_slug}")

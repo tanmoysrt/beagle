@@ -66,19 +66,24 @@ anything else. Git objects move over Smart HTTP, never through the JSON API.
 ## Running
 
 ```bash
-export BEAGLE_SERVICE_SECRET="<a long random secret>"
-export BEAGLE_DATABASE_URL="postgresql://user:pass@host/beagle"   # or sqlite:///beagle-service.db
+export BEAGLE_SERVICE_SECRET="<a long random secret>"      # token signing key
+export BEAGLE_DATABASE_URL="sqlite:///beagle-service.db"    # or postgresql://user:pass@host/beagle
 export BEAGLE_REPO_ROOT="/var/lib/beagle/repositories"
 
 beagle-service init-db
-ORG=$(beagle-service org-create frappe "Frappe")
-USER=$(beagle-service user-create "$ORG" tanmoy "Tanmoy" t@example.com)
-REPO=$(beagle-service repo-register "$ORG" press "Press" --remote-url https://github.com/frappe/press)
+beagle-service serve --host 0.0.0.0 --port 8000 &
+
+# One team is the default — no organization to manage. `setup` creates the user
+# and prints a full token (all permissions, all repositories).
+beagle-service setup tanmoy --email t@example.com
+
+REPO=$(beagle-service repo-register press "Press" --remote-url https://github.com/frappe/press)
 beagle-service repo-sync "$REPO"
-beagle-service grant "$USER" "$REPO" "source:read,repo:sync"
-beagle-service token-mint "$USER" --repos press --permissions source:read,repo:sync
-beagle-service serve --host 0.0.0.0 --port 8000
 ```
+
+Finer-grained: `user-create`, `user-list`, `grant`, `token-mint`
+(username or id), `token-revoke`. An additional organization is only needed for
+multi-tenant installs (`org-create`, then pass `--org` to the commands above).
 
 ## HTTP API
 

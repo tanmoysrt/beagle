@@ -45,6 +45,24 @@ class IdentityStore:
         row = conn.fetch_one("SELECT * FROM organizations WHERE slug = ?", (slug,))
         return Organization(**row) if row else None
 
+    def default_organization(self, conn: Connection) -> Organization:
+        """The single organization for a normal deployment, created on demand.
+
+        Most installs are one team — the organization is an internal scope, not
+        something operators manage. With exactly one org it is returned; with
+        none a ``default`` org is created; with several (an advanced multi-tenant
+        setup) the caller must name one explicitly.
+        """
+        rows = conn.fetch_all("SELECT * FROM organizations ORDER BY created_at")
+        if len(rows) == 1:
+            return Organization(**rows[0])
+        if not rows:
+            return self.create_organization(conn, "default", "Default")
+        existing = self.find_organization_by_slug(conn, "default")
+        if existing:
+            return existing
+        raise Conflict("multiple organizations exist; specify one with --org")
+
     # -- users ----------------------------------------------------------
     def create_user(
         self,

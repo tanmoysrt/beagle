@@ -38,11 +38,56 @@ def init_db(database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECR
     typer.echo("initialized")
 
 
+_ORG = typer.Option(
+    None, "--org", help="organization id (defaults to the single/default org)"
+)
+
+_ALL_PERMISSIONS = (
+    "source:read,repo:register,repo:sync,workspace:create,workspace:share,"
+    "decision:read,decision:write,feedback:read,feedback:write,admin:identity"
+)
+
+
+def _resolve_org(container, conn, organization_id):
+    if organization_id:
+        return container.identity.get_organization(conn, organization_id)
+    return container.identity.default_organization(conn)
+
+
+@app.command("setup")
+def setup(
+    username: str,
+    email: str = typer.Option("", "--email"),
+    display_name: str = typer.Option("", "--name"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    """One-shot local setup: create the user (if new) and mint a full token.
+
+    Idempotent on the user. Prints a token with every permission — convenient
+    for a single-operator local install.
+    """
+    container = _container(database_url, repo_root, secret)
+    perms = _ALL_PERMISSIONS.split(",")
+    with container.database.connect() as conn:
+        org = container.identity.default_organization(conn)
+        try:
+            user = container.identity.create_user(
+                conn, org.id, username, display_name or username, email or f"{username}@local"
+            )
+        except Exception:
+            user = container.identity.resolve_user(conn, username)
+        token, _ = container.jwt.mint(conn, user.id, ["*"], perms, label="setup")
+    typer.echo(f"user: {user.id} ({user.username})")
+    typer.echo("token (all permissions, all repositories):")
+    typer.echo(token)
+
+
 @app.command("org-create")
 def org_create(
     slug: str, name: str,
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
+    """Advanced: create an additional organization (not needed for one team)."""
     container = _container(database_url, repo_root, secret)
     with container.database.connect() as conn:
         org = container.identity.create_organization(conn, slug, name)
@@ -51,39 +96,46 @@ def org_create(
 
 @app.command("user-create")
 def user_create(
-    organization_id: str, username: str, display_name: str, email: str,
+    username: str, email: str, display_name: str = typer.Option("", "--name"),
+    organization_id: str = _ORG,
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
     container = _container(database_url, repo_root, secret)
     with container.database.connect() as conn:
-        user = container.identity.create_user(conn, organization_id, username, display_name, email)
+        org = _resolve_org(container, conn, organization_id)
+        user = container.identity.create_user(
+            conn, org.id, username, display_name or username, email
+        )
     typer.echo(user.id)
 
 
 @app.command("user-list")
 def user_list(
-    organization_id: str,
+    organization_id: str = _ORG,
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
-    """List users in an organization (id, username, email)."""
+    """List users (id, username, email)."""
     container = _container(database_url, repo_root, secret)
     with container.database.connect() as conn:
-        users = container.identity.list_users(conn, organization_id)
+        org = _resolve_org(container, conn, organization_id)
+        users = container.identity.list_users(conn, org.id)
     for user in users:
         typer.echo(f"{user.id}  {user.username}  <{user.email}>")
 
 
 @app.command("repo-register")
 def repo_register(
-    organization_id: str, slug: str, name: str,
+    slug: str, name: str,
     remote_url: str = typer.Option(None, "--remote-url"),
     default_branch: str = typer.Option("main", "--default-branch"),
+    organization_id: str = _ORG,
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
     container = _container(database_url, repo_root, secret)
     with container.database.connect() as conn:
+        org = _resolve_org(container, conn, organization_id)
         repo = container.repository_service.register(
-            conn, organization_id, slug, name, remote_url, default_branch
+            conn, org.id, slug, name, remote_url, default_branch
         )
     typer.echo(repo.id)
 

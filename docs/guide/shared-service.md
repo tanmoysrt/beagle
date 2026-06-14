@@ -9,83 +9,100 @@ The primary identity of code is `repository + commit`; a branch is just a
 mutable pointer. The service lives in `beagle/service/`, the local client in
 `beagle/bridge/`. Both are separate from the local SQLite engine.
 
-## Run it with Docker
+There's no tenant or organization to manage — a single team is the default. You
+create a user, register repositories, and go.
 
-The fastest way to get a working service with PostgreSQL:
+## Quick start (local, SQLite)
 
-```bash
-# A signing secret is required (keep it safe; rotating it invalidates tokens).
-export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
-
-docker compose up --build
-```
-
-The API is now on `http://localhost:8000`. Health check:
-
-```bash
-curl http://localhost:8000/healthz      # {"status":"ok"}
-```
-
-Mirrors, per-commit snapshots, and downloaded dependency artifacts persist in
-the `beagle-data` volume; PostgreSQL data in `beagle-db`.
-
-### Run the image directly (SQLite)
-
-For a single-node trial without Postgres:
-
-```bash
-docker build -t beagle-service .
-docker run --rm -p 8000:8000 \
-  -e BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32) \
-  -v beagle-data:/data \
-  beagle-service
-```
-
-This uses SQLite at `/data/beagle-service.db`. Use Postgres (compose) for any
-real deployment.
-
-## Run it without Docker
+The shortest path to a running service on your machine. `git` must be on `PATH`
+(the mirror and Git Smart HTTP shell out to it).
 
 ```bash
 uv sync
+
+# The signing key for tokens. Set once; keep it (rotating invalidates tokens).
 export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
-export BEAGLE_DATABASE_URL="postgresql://user:pass@localhost/beagle"  # or sqlite:///beagle-service.db
+export BEAGLE_DATABASE_URL="sqlite:///$PWD/beagle-service.db"
 export BEAGLE_REPO_ROOT="$PWD/beagle-repositories"
 
+# Start the API (creates tables on first run).
 uv run beagle-service init-db
-uv run beagle-service serve --host 0.0.0.0 --port 8000
+uv run beagle-service serve &           # http://localhost:8000
 ```
 
-`git` must be on `PATH` — the mirror and Git Smart HTTP shell out to it.
-
-## First-run setup (admin)
-
-Create an organization and a user, register a repository, sync it, grant
-access, and mint a token. With Docker, prefix each command with
-`docker compose exec service`:
+In another shell (same env vars), create yourself a user and a token:
 
 ```bash
-ORG=$(beagle-service org-create frappe "Frappe")
-beagle-service user-create "$ORG" tanmoy "Tanmoy" tanmoy@example.com
-
-REPO=$(beagle-service repo-register "$ORG" press "Press" \
-        --remote-url https://github.com/frappe/press)
-beagle-service repo-sync "$REPO"          # mirror + index commit metadata + identities
-
-# `grant` and `token-mint` accept a username or a user id.
-beagle-service grant tanmoy "$REPO" "source:read,repo:sync"
-beagle-service token-mint tanmoy --repos press \
-  --permissions source:read,repo:sync,decision:write
+uv run beagle-service setup tanmoy --email tanmoy@example.com
 ```
 
-The last command prints the JWT. It is the user's credential — store it with the
-bridge, never in a repository. List users any time with
-`beagle-service user-list "$ORG"`.
+`setup` prints a token with all permissions — perfect for a solo local install.
+That's the whole identity step; no org, no separate grant.
+
+Then register and index a repository:
+
+```bash
+REPO=$(uv run beagle-service repo-register press "Press" \
+        --remote-url https://github.com/frappe/press)
+uv run beagle-service repo-sync "$REPO"   # mirror + index commit metadata + identities
+```
+
+Point your machine at it:
+
+```bash
+export BEAGLE_SERVICE_URL=http://localhost:8000
+uv run beagle-bridge login --token "<token from setup>"
+uv run beagle-bridge whoami
+```
+
+You're done — see [Use it from Claude Code](#use-it-from-claude-code-mcp) below.
+
+## Run it with Docker (team / Postgres)
+
+For a shared deployment, compose runs the service with PostgreSQL:
+
+```bash
+export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
+docker compose up --build              # API on http://localhost:8000
+```
+
+```bash
+curl http://localhost:8000/healthz     # {"status":"ok"}
+```
+
+Run admin commands inside the container, e.g.:
+
+```bash
+docker compose exec service beagle-service setup tanmoy --email t@example.com
+```
+
+Mirrors, snapshots, and downloaded artifacts persist in the `beagle-data`
+volume; PostgreSQL data in `beagle-db`. For a single-node image without
+Postgres, `docker build -t beagle-service . && docker run -p 8000:8000 -e
+BEAGLE_SERVICE_SECRET=... -v beagle-data:/data beagle-service` uses SQLite at
+`/data`.
+
+## Users and tokens
+
+`setup` covers the common case. The finer-grained commands are there when you
+want them:
+
+```bash
+beagle-service user-create alice alice@example.com   # add another user
+beagle-service user-list                             # id, username, email
+beagle-service grant alice "$REPO" "source:read,repo:sync"
+beagle-service token-mint alice --repos press --permissions source:read
+beagle-service token-revoke <jti>                    # revoke a token
+```
+
+`grant` and `token-mint` accept a username or a user id. A token is the user's
+credential — store it with the bridge, never in a repository.
 
 ### Admin token
 
-An *admin token* is just a JWT that carries the `admin:identity` scope; it
-unlocks the admin overview and identity-mapping endpoints. Mint one with:
+An *admin token* is just a JWT carrying the `admin:identity` scope; it unlocks
+the admin overview and identity-mapping endpoints. The token from `setup`
+already has it; to mint a narrower one:
 
 ```bash
 beagle-service token-mint tanmoy --permissions admin:identity

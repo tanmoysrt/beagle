@@ -49,3 +49,5 @@ def test_permission_checks():
     require_repository(["press", "frappe"], "press")
     with pytest.raises(PermissionDenied):
         require_repository(["press"], "frappe")
+    # The "*" wildcard authorizes any repository (full-access/local token).
+    require_repository(["*"], "anything")

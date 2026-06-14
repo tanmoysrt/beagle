@@ -78,6 +78,30 @@ def test_resolve_ambiguous_username_rejected(db, identity):
             identity.resolve_user(conn, "tanmoy")
 
 
+def test_default_organization_created_on_demand(db, identity):
+    with db.connect() as conn:
+        org = identity.default_organization(conn)
+        assert org.slug == "default"
+        # Idempotent: the same single org is returned, not a new one.
+        assert identity.default_organization(conn).id == org.id
+
+
+def test_default_organization_returns_single_existing(db, identity):
+    with db.connect() as conn:
+        created = identity.create_organization(conn, "frappe", "Frappe")
+        assert identity.default_organization(conn).id == created.id
+
+
+def test_default_organization_ambiguous_with_multiple(db, identity):
+    from beagle.service.errors import Conflict
+
+    with db.connect() as conn:
+        identity.create_organization(conn, "a", "A")
+        identity.create_organization(conn, "b", "B")
+        with pytest.raises(Conflict):
+            identity.default_organization(conn)
+
+
 def test_list_users(db, identity):
     with db.connect() as conn:
         org = identity.create_organization(conn, "frappe", "Frappe")
