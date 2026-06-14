@@ -6,7 +6,10 @@ from pathlib import Path
 import os
 import pytest
 
+from beagle.service.commit_indexer import CommitIndexer
+from beagle.service.commit_store import CommitStore
 from beagle.service.errors import Conflict
+from beagle.service.git.commit_reader import CommitReader
 from beagle.service.git.mirror import GitMirror
 from beagle.service.repositories import RepositoryStore
 from beagle.service.repository_service import RepositoryService
@@ -27,7 +30,9 @@ def _make_upstream(path: Path) -> None:
 @pytest.fixture
 def service(config):
     config.repo_storage_root.mkdir(parents=True, exist_ok=True)
-    return RepositoryService(RepositoryStore(), GitMirror(config))
+    mirror = GitMirror(config)
+    indexer = CommitIndexer(CommitReader(config), CommitStore(), mirror)
+    return RepositoryService(RepositoryStore(), mirror, indexer)
 
 
 def _org(db, identity):

@@ -103,6 +103,44 @@ def test_register_and_sync(client, app, user_id, tmp_path):
     assert {"repo.register", "repo.sync"} <= {e.action for e in events}
 
 
+def test_commit_history_and_search_api(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    synced = client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token)).json()
+    assert synced["index_status"]["commit_count"] == 1
+
+    history = client.get(f"/v1/repositories/{repo_id}/commits", headers=_auth(token)).json()
+    assert len(history["commits"]) == 1
+    assert history["commits"][0]["subject"] == "c1"
+
+    found = client.get(
+        f"/v1/repositories/{repo_id}/commits/search", params={"q": "c1"}, headers=_auth(token)
+    ).json()
+    assert len(found["commits"]) == 1
+
+
+def test_commit_history_requires_repo_scope(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    admin = _mint(app, user_id, ["press"], [permissions.REPO_REGISTER, permissions.REPO_SYNC])
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(admin),
+    ).json()["repository"]["id"]
+    # A token scoped to a different repo must not read this repo's history.
+    other = _mint(app, user_id, ["frappe"], [permissions.SOURCE_READ])
+    response = client.get(f"/v1/repositories/{repo_id}/commits", headers=_auth(other))
+    assert response.status_code == 403
+
+
 def test_session_open_and_end(client, app, user_id):
     token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
     opened = client.post("/v1/sessions", json={"client_name": "claude-code"}, headers=_auth(token))

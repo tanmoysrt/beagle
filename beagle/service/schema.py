@@ -115,6 +115,55 @@ _V1 = [
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON mcp_sessions(user_id)",
 ]
 
-MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1)]
+_V2 = [
+    """
+    CREATE TABLE IF NOT EXISTS git_commits (
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        sha TEXT NOT NULL,
+        tree_sha TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        author_name TEXT NOT NULL,
+        author_email TEXT NOT NULL,
+        author_time INTEGER NOT NULL,
+        author_tz TEXT NOT NULL,
+        committer_name TEXT NOT NULL,
+        committer_email TEXT NOT NULL,
+        commit_time INTEGER NOT NULL,
+        committer_tz TEXT NOT NULL,
+        signature_status TEXT NOT NULL DEFAULT 'N',
+        is_merge INTEGER NOT NULL DEFAULT 0,
+        files_changed INTEGER,
+        insertions INTEGER,
+        deletions INTEGER,
+        indexed_at TEXT NOT NULL,
+        PRIMARY KEY (repository_id, sha)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS git_commit_parents (
+        repository_id TEXT NOT NULL,
+        child_sha TEXT NOT NULL,
+        parent_sha TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (repository_id, child_sha, parent_sha)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS git_commit_trailers (
+        repository_id TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        trailer_key TEXT NOT NULL,
+        trailer_value TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_commits_time ON git_commits(repository_id, commit_time)",
+    "CREATE INDEX IF NOT EXISTS idx_commits_author ON git_commits(repository_id, author_email)",
+    "CREATE INDEX IF NOT EXISTS idx_trailers_key ON git_commit_trailers(repository_id, trailer_key)",
+    "CREATE INDEX IF NOT EXISTS idx_parents_child ON git_commit_parents(repository_id, child_sha)",
+]
+
+MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2)]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

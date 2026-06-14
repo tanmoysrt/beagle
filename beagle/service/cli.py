@@ -83,7 +83,34 @@ def repo_sync(
     container = _container(database_url, repo_root, secret)
     with container.database.connect() as conn:
         result = container.repository_service.sync(conn, repository_id)
-    typer.echo(f"synced {result.ref_count} refs")
+    typer.echo(f"synced {result.ref_count} refs, indexed {result.commit_count} new commits")
+
+
+@app.command("commit-search")
+def commit_search(
+    repository_id: str, query: str,
+    limit: int = typer.Option(20, "--limit"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        commits = container.commits.search(conn, repository_id, query, limit)
+    for commit in commits:
+        typer.echo(f"{commit['sha'][:12]}  {commit['subject']}")
+
+
+@app.command("commit-show")
+def commit_show(
+    repository_id: str, sha: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        commit = container.commits.get_commit(conn, repository_id, sha)
+    typer.echo(f"{commit['sha']}  ({commit['author_name']} <{commit['author_email']}>)")
+    typer.echo(commit["subject"])
+    if commit["trailers"]:
+        typer.echo("trailers: " + ", ".join(f"{t['key']}={t['value']}" for t in commit["trailers"]))
 
 
 @app.command("grant")

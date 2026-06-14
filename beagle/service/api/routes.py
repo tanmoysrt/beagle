@@ -113,6 +113,55 @@ def sync_repository(
     return {"user": identity.user_id, "index_status": asdict(result)}
 
 
+@router.get("/repositories/{repository_id}/commits")
+def commit_history(
+    request: Request,
+    repository_id: str,
+    limit: int = 50,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        repo = container.repositories.get(conn, repository_id)
+        permissions.require_repository(identity.repositories, repo.slug)
+        permissions.require_permission(identity.permissions, permissions.SOURCE_READ)
+        commits = container.commits.history(conn, repository_id, limit=min(limit, 200))
+    return {"user": identity.user_id, "repository_id": repository_id, "commits": commits}
+
+
+@router.get("/repositories/{repository_id}/commits/search")
+def search_commit_messages(
+    request: Request,
+    repository_id: str,
+    q: str,
+    limit: int = 20,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        repo = container.repositories.get(conn, repository_id)
+        permissions.require_repository(identity.repositories, repo.slug)
+        permissions.require_permission(identity.permissions, permissions.SOURCE_READ)
+        commits = container.commits.search(conn, repository_id, q, limit=min(limit, 100))
+    return {"user": identity.user_id, "query": q, "commits": commits}
+
+
+@router.get("/repositories/{repository_id}/commits/{sha}")
+def commit_detail(
+    request: Request,
+    repository_id: str,
+    sha: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        repo = container.repositories.get(conn, repository_id)
+        permissions.require_repository(identity.repositories, repo.slug)
+        permissions.require_permission(identity.permissions, permissions.SOURCE_READ)
+        commit = container.commits.get_commit(conn, repository_id, sha)
+    return {"user": identity.user_id, "commit": commit}
+
+
 @router.post("/sessions")
 def open_session(
     request: Request,

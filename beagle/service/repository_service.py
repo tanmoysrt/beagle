@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from beagle.service.commit_indexer import CommitIndexer
 from beagle.service.db import Connection
 from beagle.service.git import refs as ref_ns
 from beagle.service.git.mirror import GitMirror, RefEntry
@@ -22,14 +23,18 @@ class SyncResult:
     repository_id: str
     ref_count: int
     ingestion_state: str
+    commit_count: int = 0
 
 
 class RepositoryService:
     """Registers and synchronizes repositories."""
 
-    def __init__(self, store: RepositoryStore, mirror: GitMirror):
+    def __init__(
+        self, store: RepositoryStore, mirror: GitMirror, commit_indexer: CommitIndexer
+    ):
         self._store = store
         self._mirror = mirror
+        self._commit_indexer = commit_indexer
 
     def register(
         self,
@@ -60,13 +65,15 @@ class RepositoryService:
             self._mirror.fetch_upstream(repository_id)
         entries = self._mirror.list_refs(repository_id)
         self._persist_refs(conn, repository_id, entries)
+        new_commits = self._commit_indexer.index(conn, repository_id)
         self._store.set_ingestion_state(conn, repository_id, "synced")
-        return SyncResult(repository_id, len(entries), "synced")
+        return SyncResult(repository_id, len(entries), "synced", new_commits)
 
     def status(self, conn: Connection, repository_id: str) -> SyncResult:
         repo = self._store.get(conn, repository_id)
         refs = self._store.list_refs(conn, repository_id)
-        return SyncResult(repository_id, len(refs), repo.ingestion_state)
+        commits = self._commit_indexer.count(conn, repository_id)
+        return SyncResult(repository_id, len(refs), repo.ingestion_state, commits)
 
     def _persist_refs(
         self, conn: Connection, repository_id: str, entries: list[RefEntry]

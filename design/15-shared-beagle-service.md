@@ -1643,13 +1643,13 @@ who shared a workspace
 
 ## Phase C — commit metadata
 
-- [ ] Index all reachable commit metadata.
-- [ ] Store full subjects and bodies.
-- [ ] Store authors, committers, timestamps, and timezones.
-- [ ] Store parent graph.
-- [ ] Parse trailers.
-- [ ] Store signature status.
-- [ ] Build commit-message search.
+- [x] Index all reachable commit metadata.
+- [x] Store full subjects and bodies.
+- [x] Store authors, committers, timestamps, and timezones.
+- [x] Store parent graph.
+- [x] Parse trailers.
+- [x] Store signature status.
+- [x] Build commit-message search. *(portable LIKE scan; FTS is a later optimization)*
 
 ## Phase D — revision indexing
 
