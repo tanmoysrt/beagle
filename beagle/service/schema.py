@@ -307,8 +307,38 @@ _V6 = [
     "CREATE INDEX IF NOT EXISTS idx_dep_packages_name ON dependency_packages(name)",
 ]
 
+_V7 = [
+    """
+    CREATE TABLE IF NOT EXISTS workspace_overlays (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        base_commit TEXT NOT NULL,
+        patch_hash TEXT NOT NULL DEFAULT '',
+        dirty_tree_hash TEXT NOT NULL DEFAULT '',
+        patch_path TEXT NOT NULL DEFAULT '',
+        snapshot_id TEXT,
+        sharing_state TEXT NOT NULL DEFAULT 'private',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expiry TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS workspace_shares (
+        workspace_id TEXT NOT NULL REFERENCES workspace_overlays(id),
+        user_id TEXT NOT NULL REFERENCES users(id),
+        PRIMARY KEY (workspace_id, user_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_overlays_user ON workspace_overlays(user_id)",
+    # decisions may now reference a workspace and a commit (design §16).
+    "ALTER TABLE decisions ADD COLUMN workspace_id TEXT",
+    "ALTER TABLE decisions ADD COLUMN commit_sha TEXT",
+]
+
 MIGRATIONS: list[tuple[int, list[str]]] = [
-    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5), (6, _V6)
+    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5), (6, _V6), (7, _V7)
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

@@ -225,6 +225,48 @@ def test_decision_write_requires_permission(client, app, user_id):
     assert response.status_code == 403
 
 
+def test_workspace_api_lifecycle(client, app, user_id, tmp_path):
+    upstream = tmp_path / "upstream"
+    _make_upstream(upstream)
+    (upstream / "m.py").write_text("def base():\n    return 1\n")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "U", "GIT_AUTHOR_EMAIL": "u@e.com",
+           "GIT_COMMITTER_NAME": "U", "GIT_COMMITTER_EMAIL": "u@e.com"}
+    subprocess.run(["git", "add", "m.py"], cwd=upstream, env=env, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "m"], cwd=upstream, env=env, check=True, capture_output=True)
+
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ,
+         permissions.WORKSPACE_CREATE],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(upstream)},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+    base = app.state.container.mirror.resolve(repo_id, "refs/beagle/upstream/heads/main")
+
+    patch = (
+        "diff --git a/m.py b/m.py\n--- a/m.py\n+++ b/m.py\n"
+        "@@ -1,2 +1,5 @@\n def base():\n     return 1\n+\n+def wip():\n+    return 2\n"
+    )
+    created = client.post(
+        f"/v1/repositories/{repo_id}/workspaces",
+        json={"base_commit": base, "patch": patch}, headers=_auth(token),
+    )
+    assert created.status_code == 200
+    ws_id = created.json()["workspace"]["id"]
+
+    found = client.get(
+        f"/v1/workspaces/{ws_id}/search", params={"q": "wip"}, headers=_auth(token)
+    ).json()
+    assert any(r["name"] == "wip" for r in found["results"])
+
+    deleted = client.delete(f"/v1/workspaces/{ws_id}", headers=_auth(token))
+    assert deleted.json()["deleted"] is True
+
+
 def test_identity_endpoints(client, app, user_id, tmp_path):
     _make_upstream(tmp_path / "upstream")
     token = _mint(

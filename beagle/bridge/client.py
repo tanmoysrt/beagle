@@ -47,6 +47,14 @@ class ServiceClient:
             "POST", f"/v1/repositories/{repository_id}/revisions/{revision}/index"
         )
 
+    def create_workspace(
+        self, repository_id: str, base_commit: str, patch: str, dirty_tree_hash: str
+    ) -> dict:
+        return self._request(
+            "POST", f"/v1/repositories/{repository_id}/workspaces",
+            {"base_commit": base_commit, "patch": patch, "dirty_tree_hash": dirty_tree_hash},
+        )["workspace"]
+
     def push_ref(
         self, local: LocalRepository, repository_id: str, refspec: str
     ) -> None:

@@ -74,6 +74,12 @@ class SnapshotStore:
             ),
         )
 
+    def delete(self, conn: Connection, repository_id: str, commit_sha: str) -> None:
+        conn.execute(
+            "DELETE FROM index_snapshots WHERE repository_id = ? AND commit_sha = ?",
+            (repository_id, commit_sha),
+        )
+
     def mark_failed(self, conn: Connection, snapshot_id: str) -> None:
         conn.execute(
             "UPDATE index_snapshots SET status = 'failed' WHERE id = ?", (snapshot_id,)

@@ -1688,7 +1688,7 @@ builds on these primitives and is the remaining work.
 - [x] Read JWT from keyring. *(env -> 0600 file -> optional keyring)*
 - [x] Perform sync handshake. *(sync-status: has_commit / has_snapshot)*
 - [x] Push only missing commits. *(git push to the user's own ref namespace, only when absent)*
-- [~] Send dirty patches as overlays. *(dirty patch + fingerprint detected; overlay upload awaits WorkspaceOverlay)*
+- [x] Send dirty patches as overlays. *(beagle-bridge sync --upload-dirty creates a WorkspaceOverlay)*
 - [x] Detect local changes.
 - [x] Support local-only mode. *(uploads nothing)*
 - [x] Avoid repeated uploads. *(already-synced commit and snapshot upload nothing)*
@@ -1708,7 +1708,7 @@ builds on these primitives and is the remaining work.
 - [x] Add change episodes.
 - [x] Add DecisionActor.
 - [x] Add explicit confirmation. *(inferred by default; confirm_actor promotes to confirmed)*
-- [~] Link workspaces and commits. *(decisions link affected entities; workspace/commit links pending Phase F workspaces)*
+- [x] Link workspaces and commits. *(decisions carry workspace_id + commit_sha columns; affected entities linked)*
 - [x] Add feedback states. *(received/accepted/implemented/rejected/superseded)*
 - [x] Retrieve history by entity. *(decisions and feedback queryable by entity id)*
 - [x] Label inferred attribution. *(authenticated author = confirmed proposer; mentioned others = inferred)*

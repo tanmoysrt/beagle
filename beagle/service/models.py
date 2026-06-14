@@ -95,6 +95,28 @@ class GitIdentity:
 
 
 @dataclass
+class WorkspaceOverlay:
+    """A user's local changes layered over a base commit (design/15 §15).
+
+    The overlay snapshot is the base commit's snapshot plus the local patch. A
+    workspace belongs to one user; others need explicit sharing.
+    """
+
+    id: str
+    user_id: str
+    repository_id: str
+    base_commit: str
+    patch_hash: str
+    dirty_tree_hash: str
+    patch_path: str
+    snapshot_id: str | None
+    sharing_state: str
+    created_at: str
+    updated_at: str
+    expiry: str | None
+
+
+@dataclass
 class McpSession:
     id: str
     user_id: str

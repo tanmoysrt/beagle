@@ -238,6 +238,18 @@ def feedback_record(
     typer.echo(item.id)
 
 
+@app.command("workspace-create")
+def workspace_create(
+    repository_id: str, user_id: str, base_commit: str,
+    patch_file: str = typer.Option(None, "--patch-file"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    patch = Path(patch_file).read_text() if patch_file else ""
+    overlay = container.workspace_service.create(user_id, repository_id, base_commit, patch)
+    typer.echo(f"{overlay.id}  snapshot={overlay.snapshot_id}")
+
+
 @app.command("dependencies")
 def dependencies(
     repository_id: str, revision: str,

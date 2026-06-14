@@ -128,3 +128,24 @@ def test_bridge_local_only_uploads_nothing(live, working_repo):
     assert outcome.local_only is True
     assert outcome.pushed is False and outcome.indexed is False
     assert not container.mirror.has_commit(repo_id, outcome.head)
+
+
+def test_bridge_uploads_dirty_overlay(live, working_repo):
+    url, token, repo_id, container = live
+    # WORKSPACE_CREATE is needed to create an overlay; re-mint with the scope.
+    with container.database.connect() as conn:
+        user_id = conn.fetch_one("SELECT id FROM users WHERE username='dev'")["id"]
+        token2, _ = container.jwt.mint(
+            conn, user_id, ["app"],
+            [permissions.SOURCE_READ, permissions.REPO_SYNC, permissions.WORKSPACE_CREATE],
+            3600,
+        )
+    # Make the tree dirty.
+    (working_repo / "a.py").write_text("x = 99\n")
+    session = BridgeSession(ServiceClient(url, token2), LocalRepository(working_repo))
+    outcome = session.ensure_head_synced("app", upload_dirty=True)
+    assert outcome.dirty is True
+    assert outcome.workspace_id is not None
+    with container.database.connect() as conn:
+        overlay = container.workspaces.get(conn, outcome.workspace_id)
+    assert overlay.snapshot_id is not None

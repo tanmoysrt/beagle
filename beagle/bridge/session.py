@@ -23,6 +23,7 @@ class SyncOutcome:
     indexed: bool
     dirty: bool
     local_only: bool
+    workspace_id: str | None = None
 
 
 class BridgeSession:
@@ -36,7 +37,9 @@ class BridgeSession:
         """Authenticate and return the service's view of the current user."""
         return self._client.whoami()
 
-    def ensure_head_synced(self, repository_slug: str, local_only: bool = False) -> SyncOutcome:
+    def ensure_head_synced(
+        self, repository_slug: str, local_only: bool = False, upload_dirty: bool = False
+    ) -> SyncOutcome:
         identity = self._client.whoami()
         head = self._local.head_sha()
         branch = self._local.branch()
@@ -48,7 +51,15 @@ class BridgeSession:
         status = self._client.sync_status(repo["id"], head)
         pushed = self._push_if_missing(identity, repo["id"], head, branch, status)
         indexed = self._index_if_missing(repo["id"], head, status)
-        return SyncOutcome(head, branch, pushed, indexed, dirty, False)
+        workspace_id = self._upload_overlay(repo["id"], head) if (dirty and upload_dirty) else None
+        return SyncOutcome(head, branch, pushed, indexed, dirty, False, workspace_id)
+
+    def _upload_overlay(self, repository_id: str, head: str) -> str:
+        """Send uncommitted changes as a workspace overlay (design §15)."""
+        overlay = self._client.create_workspace(
+            repository_id, head, self._local.dirty_patch(), self._local.dirty_fingerprint()
+        )
+        return overlay["id"]
 
     def _push_if_missing(
         self, identity: dict, repository_id: str, head: str, branch: str, status: dict

@@ -29,6 +29,8 @@ from beagle.service.revision_compare import RevisionComparer
 from beagle.service.revision_indexer import RevisionIndexer
 from beagle.service.sessions import SessionStore
 from beagle.service.snapshot_store import SnapshotStore
+from beagle.service.workspace_service import WorkspaceService
+from beagle.service.workspaces import WorkspaceStore
 
 
 class ServiceContainer:
@@ -58,6 +60,10 @@ class ServiceContainer:
         self.dependencies = DependencyStore()
         self.dependency_service = DependencyService(
             self.database, self.mirror, self.dependencies
+        )
+        self.workspaces = WorkspaceStore(config)
+        self.workspace_service = WorkspaceService(
+            config, self.database, self.workspaces, self.revision_indexer, self.snapshots
         )
         self.repository_service = RepositoryService(
             self.repositories, self.mirror, self.commit_indexer, self.git_identities

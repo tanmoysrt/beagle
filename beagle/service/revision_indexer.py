@@ -12,6 +12,7 @@ transaction with the heavy subprocess work between them.
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -50,6 +51,38 @@ class RevisionIndexer:
         if snapshot.status == "ready":
             return snapshot
         return self._run_index(repository_id, snapshot)
+
+    def index_overlay(
+        self, repository_id: str, base_commit: str, patch: str, artifact: Path
+    ) -> dict[str, int]:
+        """Index a base tree plus a local patch into ``artifact`` (design §15).
+
+        The patch is applied to a throwaway materialized tree; repository code is
+        never executed. Returns the index counts. A malformed patch raises.
+        """
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(prefix="beagle-overlay-") as tree_dir:
+            tree = Path(tree_dir)
+            self._mirror.export_tree(repository_id, base_commit, tree)
+            self._apply_patch(tree, patch)
+            workspace = Workspace(tree, db_path=artifact)
+            try:
+                workspace.index(force=True)
+                return workspace.repo.counts()
+            finally:
+                workspace.close()
+
+    @staticmethod
+    def _apply_patch(tree: Path, patch: str) -> None:
+        if not patch.strip():
+            return
+        result = subprocess.run(
+            ["git", "apply", "-p1", "--whitespace=nowarn", "-"],
+            input=patch, cwd=str(tree), capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise ServiceError(f"failed to apply overlay patch: {result.stderr.strip()}")
 
     def index_history(
         self, repository_id: str, revision: str, limit: int = 50

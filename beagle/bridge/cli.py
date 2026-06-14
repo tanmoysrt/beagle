@@ -51,14 +51,19 @@ def sync(
     repository_slug: str,
     service_url: str = _URL,
     local_only: bool = typer.Option(False, "--local-only"),
+    upload_dirty: bool = typer.Option(False, "--upload-dirty",
+                                      help="send uncommitted changes as a workspace overlay"),
 ) -> None:
     """Synchronize the current repository's HEAD with the service."""
     root = find_repo_root(Path.cwd())
     session = BridgeSession(_client(service_url), LocalRepository(root))
-    outcome = session.ensure_head_synced(repository_slug, local_only=local_only)
+    outcome = session.ensure_head_synced(
+        repository_slug, local_only=local_only, upload_dirty=upload_dirty
+    )
     typer.echo(f"head {outcome.head[:12]} on {outcome.branch}")
     typer.echo(f"pushed={outcome.pushed} indexed={outcome.indexed} "
-               f"dirty={outcome.dirty} local_only={outcome.local_only}")
+               f"dirty={outcome.dirty} local_only={outcome.local_only} "
+               f"workspace={outcome.workspace_id or '-'}")
 
 
 if __name__ == "__main__":

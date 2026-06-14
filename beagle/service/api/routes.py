@@ -83,6 +83,21 @@ class SummaryRequest(BaseModel):
     decision: str = ""
 
 
+class WorkspaceRequest(BaseModel):
+    base_commit: str
+    patch: str = ""
+    dirty_tree_hash: str = ""
+
+
+class WorkspacePatchRequest(BaseModel):
+    patch: str = ""
+    dirty_tree_hash: str = ""
+
+
+class ShareRequest(BaseModel):
+    user_id: str
+
+
 @router.get("/me")
 def current_user(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
@@ -545,6 +560,104 @@ def search_dependencies(
     with container.database.connect() as conn:
         packages = container.dependencies.search_packages(conn, repository_id, q)
     return {"user": identity.user_id, "packages": packages}
+
+
+@router.post("/repositories/{repository_id}/workspaces")
+def create_workspace(
+    request: Request,
+    repository_id: str,
+    body: WorkspaceRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.WORKSPACE_CREATE)
+    overlay = container.workspace_service.create(
+        identity.user_id, repository_id, body.base_commit, body.patch, body.dirty_tree_hash
+    )
+    with container.database.connect() as conn:
+        container.audit.record(
+            conn, "workspace.create", identity.user_id, identity.organization_id,
+            repository_id, request_id(request), {"workspace": overlay.id},
+        )
+    return {"user": identity.user_id, "workspace": asdict(overlay)}
+
+
+@router.post("/workspaces/{workspace_id}")
+def update_workspace(
+    request: Request,
+    workspace_id: str,
+    body: WorkspacePatchRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.WORKSPACE_CREATE)
+    with container.database.connect() as conn:
+        overlay = container.workspaces.get(conn, workspace_id)
+        if overlay.user_id != identity.user_id:
+            raise permissions.PermissionDenied("not the workspace owner")
+    updated = container.workspace_service.update(workspace_id, body.patch, body.dirty_tree_hash)
+    return {"user": identity.user_id, "workspace": asdict(updated)}
+
+
+@router.get("/workspaces/{workspace_id}")
+def get_workspace(
+    request: Request,
+    workspace_id: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        overlay = container.workspaces.authorize_read(conn, workspace_id, identity.user_id)
+    return {"user": identity.user_id, "workspace": asdict(overlay)}
+
+
+@router.get("/workspaces/{workspace_id}/search")
+def search_workspace(
+    request: Request,
+    workspace_id: str,
+    q: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    from beagle.service.revision_indexer import search_snapshot_entities
+
+    container = container_of(request)
+    with container.database.connect() as conn:
+        overlay = container.workspaces.authorize_read(conn, workspace_id, identity.user_id)
+    artifact = str(container.workspace_service.artifact_path(workspace_id))
+    results = search_snapshot_entities(artifact, q, limit=20)
+    return {"user": identity.user_id, "workspace_id": workspace_id, "results": results}
+
+
+@router.post("/workspaces/{workspace_id}/share")
+def share_workspace(
+    request: Request,
+    workspace_id: str,
+    body: ShareRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.WORKSPACE_SHARE)
+    with container.database.connect() as conn:
+        overlay = container.workspaces.get(conn, workspace_id)
+        if overlay.user_id != identity.user_id:
+            raise permissions.PermissionDenied("not the workspace owner")
+        container.workspaces.share(conn, workspace_id, body.user_id)
+    return {"user": identity.user_id, "workspace_id": workspace_id, "shared_with": body.user_id}
+
+
+@router.delete("/workspaces/{workspace_id}")
+def delete_workspace(
+    request: Request,
+    workspace_id: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        overlay = container.workspaces.get(conn, workspace_id)
+        if overlay.user_id != identity.user_id:
+            permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+        container.workspaces.delete(conn, workspace_id)
+    return {"user": identity.user_id, "workspace_id": workspace_id, "deleted": True}
 
 
 @router.get("/identities")

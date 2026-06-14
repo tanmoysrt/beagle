@@ -34,6 +34,7 @@ source → cross-package resolution) and the Phase I consumer integrations
 | `revision_compare.py` | Compare revisions/branches and summarize merges (files, entities, commits, authors). |
 | `decisions.py`, `feedback_store.py` | Change episodes, decisions + actors (roles/confirmation), feedback lifecycle. |
 | `dependencies/`, `dependency_store.py`, `dependency_service.py` | Parse manifests/lockfiles, verify hashes, archive-safe unpack, dependency snapshots. |
+| `workspaces.py`, `workspace_service.py` | Workspace overlays: base commit + local patch, indexed into a private snapshot. |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
 | `git/smart_http.py` | Authenticated `git http-backend` proxy. |
@@ -99,6 +100,10 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | POST | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `repo:sync` + repo scope |
 | GET | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/dependencies/search?q=` | `source:read` + repo scope |
+| POST | `/v1/repositories/{id}/workspaces` | `workspace:create` + repo scope |
+| POST/GET | `/v1/workspaces/{wid}[/search]` | owner (or shared, for read) |
+| POST | `/v1/workspaces/{wid}/share` | `workspace:share`, owner |
+| DELETE | `/v1/workspaces/{wid}` | owner (or `admin:identity`) |
 | GET | `/v1/repositories/{id}/compare?base=&head=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/compare-branches?target=&source=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/merge-summary/{rev}` | `source:read` + repo scope |
