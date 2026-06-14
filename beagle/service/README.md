@@ -176,7 +176,9 @@ beagle-service-mcp                             # read-only MCP for Claude Code
 `beagle-service-mcp` exposes revision-aware retrieval (current_user,
 commit_history, search_commits, revision_search, compare_revisions,
 decision_history, feedback_history, dependency_resolutions), each forwarding to
-the service with the stored token. The admin overview is at `/admin`.
+the service with the stored token. In a project's `.mcp.json`, launch it via
+`uv run --project /path/to/beagle beagle-service-mcp` (the script is in beagle's
+venv, not on `PATH`). The admin UI is at `/admin`.
 
 ## Tests
 

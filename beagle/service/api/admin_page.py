@@ -258,9 +258,14 @@ async function generate() {
 }
 
 function renderInstructions(user, tok) {
+  // Launch via `uv run --project <beagle>` so the command resolves without
+  // beagle-service-mcp being on PATH. Replace BEAGLE_DIR with the install path
+  // (or, if installed globally with `uv tool install`, use command
+  // "beagle-service-mcp" with no args).
   const mcp = JSON.stringify({
     mcpServers: { 'beagle-service': {
-      command: 'beagle-service-mcp',
+      command: 'uv',
+      args: ['run', '--project', '/path/to/beagle', 'beagle-service-mcp'],
       env: { BEAGLE_SERVICE_URL: origin, BEAGLE_TOKEN: tok }
     } }
   }, null, 2);
@@ -279,7 +284,9 @@ beagle-bridge sync <repo-slug>      # run inside a checkout`;
      <div class="row" style="justify-content:space-between">
        <strong>2 · Claude Code (.mcp.json)</strong>
        <button class="small" onclick="copy(this,mcpText)">Copy</button></div>
-     <pre id="mcpBlock">${esc(mcp)}</pre>`;
+     <pre id="mcpBlock">${esc(mcp)}</pre>
+     <p class="muted">Set <code>/path/to/beagle</code> to where beagle is installed.
+     If you ran <code>uv tool install</code>, use <code>"command": "beagle-service-mcp"</code> with no <code>args</code>.</p>`;
   window.bridgeText = bridge; window.mcpText = mcp;
 }
 

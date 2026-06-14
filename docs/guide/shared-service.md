@@ -169,18 +169,27 @@ canonical upstream refs.
 ## Use it from Claude Code (MCP)
 
 The bridge hosts a **read-only** MCP server that forwards revision-aware
-retrieval to the service with your token. Register it in Claude Code:
+retrieval to the service with your token. Add it to the project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "beagle-service": {
-      "command": "beagle-service-mcp",
-      "env": { "BEAGLE_SERVICE_URL": "http://localhost:8000" }
+      "command": "uv",
+      "args": ["run", "--project", "/path/to/beagle", "beagle-service-mcp"],
+      "env": {
+        "BEAGLE_SERVICE_URL": "http://localhost:8000",
+        "BEAGLE_TOKEN": "<token from the admin UI>"
+      }
     }
   }
 }
 ```
+
+The `uv run --project` form is used because `beagle-service-mcp` lives in
+beagle's virtualenv and isn't on `PATH` by default. Point `/path/to/beagle` at
+your install. If you installed beagle globally (`uv tool install`), you can
+instead use `"command": "beagle-service-mcp"` with no `args`.
 
 Tools: `current_user`, `list_repositories`, `commit_history`, `search_commits`,
 `revision_search`, `compare_revisions`, `decision_history`, `feedback_history`,
