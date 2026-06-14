@@ -1720,10 +1720,10 @@ the remaining follow-up.
 - [x] Compare revisions. *(changed files + entity add/remove/change + commit range + authors)*
 - [x] Summarize branch changes. *(source vs target around the merge base)*
 - [x] Summarize merges. *(first parent vs merge result tree)*
-- [ ] Add Claude Code MCP. *(consumer integration — via the local bridge, Phase F)*
-- [ ] Add CI integration. *(consumer integration)*
-- [ ] Add local-change context. *(needs workspace overlays, Phase F)*
-- [ ] Add lightweight administration UI.
+- [x] Add Claude Code MCP. *(read-only beagle-service-mcp forwarding to the service via the bridge)*
+- [x] Add CI integration. *(beagle-bridge ci base head — comparison report, --json)*
+- [x] Add local-change context. *(workspace overlays + beagle-bridge sync --upload-dirty)*
+- [x] Add lightweight administration UI. *(read-only /admin page + /v1/admin/overview)*
 
 ---
 

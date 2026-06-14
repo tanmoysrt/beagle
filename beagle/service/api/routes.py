@@ -690,6 +690,17 @@ def delete_workspace(
     return {"user": identity.user_id, "workspace_id": workspace_id, "deleted": True}
 
 
+@router.get("/admin/overview")
+def admin_overview(
+    request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
+) -> dict:
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    with container.database.connect() as conn:
+        overview = container.admin.overview(conn, identity.organization_id)
+    return {"user": identity.user_id, "overview": overview}
+
+
 @router.get("/identities")
 def list_git_identities(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)

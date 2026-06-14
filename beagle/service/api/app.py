@@ -8,9 +8,10 @@ to their HTTP status. Construct with an explicit config in tests; in deployment
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from beagle.service.api import git_routes, routes
+from beagle.service.api.admin_page import ADMIN_HTML
 from beagle.service.config import ServiceConfig
 from beagle.service.container import ServiceContainer
 from beagle.service.errors import ServiceError
@@ -33,5 +34,9 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict:
         return {"status": "ok"}
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_page() -> str:
+        return ADMIN_HTML
 
     return app

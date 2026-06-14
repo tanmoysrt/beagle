@@ -6,6 +6,7 @@ synchronizes the current repository's HEAD with the minimum upload.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -64,6 +65,35 @@ def sync(
     typer.echo(f"pushed={outcome.pushed} indexed={outcome.indexed} "
                f"dirty={outcome.dirty} local_only={outcome.local_only} "
                f"workspace={outcome.workspace_id or '-'}")
+
+
+@app.command()
+def ci(
+    repository_slug: str,
+    base: str = typer.Argument(..., help="base revision"),
+    head: str = typer.Argument(..., help="head revision"),
+    service_url: str = _URL,
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Print a revision comparison for CI (changed files, entities, authors)."""
+    client = _client(service_url)
+    repo = client.find_repository(repository_slug)
+    comparison = client.compare(repo["id"], base, head)
+    if json_output:
+        typer.echo(json.dumps(comparison, indent=2))
+        return
+    typer.echo(f"files changed: {len(comparison['changed_files'])}")
+    typer.echo(f"entities +{len(comparison['entities_added'])} "
+               f"-{len(comparison['entities_removed'])} ~{len(comparison['entities_changed'])}")
+    typer.echo(f"commits: {len(comparison['commits'])}  "
+               f"authors: {', '.join(comparison['authors'])}")
+
+
+def mcp() -> None:
+    """Entry point for the read-only service MCP server (beagle-service-mcp)."""
+    from beagle.bridge.mcp_server import main
+
+    main()
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ database, which hands out a fresh connection per operation.
 
 from __future__ import annotations
 
+from beagle.service.admin import AdminService
 from beagle.service.audit import AuditLog
 from beagle.service.commit_indexer import CommitIndexer
 from beagle.service.commit_store import CommitStore
@@ -44,6 +45,7 @@ class ServiceContainer:
         self.identity = IdentityStore()
         self.repositories = RepositoryStore()
         self.sessions = SessionStore()
+        self.admin = AdminService()
         self.decisions = DecisionStore()
         self.feedback = FeedbackStore()
         self.audit = AuditLog()

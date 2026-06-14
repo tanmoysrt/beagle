@@ -45,7 +45,8 @@ Current scope:
 - JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
 - frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
 - shared multi-tenant service + local bridge: JWT identity, Git mirroring, commit metadata, identity
-  mapping, per-commit source indexing (see `design/15`, Phases A–I; E network slice + I consumers pending)
+  mapping, per-commit source indexing, dependency resolution, decisions/feedback, comparison, workspace
+  overlays, service MCP/CI/admin UI (see `design/15`, Phases A–I complete; JS cross-package symbol edges pending)
   - organizations, users, server-minted JWTs, repository-scoped permissions, MCP sessions, audit log
   - bare Git mirrors, authenticated Smart HTTP, ref namespaces with per-user push scoping
   - Tier-0 commit metadata: full messages, separate author/committer identities + timezones, parent
@@ -63,20 +64,21 @@ Current scope:
   - dependency analysis: parse Python/JS manifests+lockfiles into pinned snapshots, registry download
     (PyPI/npm) with hash verification + archive-safe unpack (no scripts run), index downloaded source
     cached by hash, Python cross-package import/symbol resolution with provenance (JS symbol edges pending)
-  - lives in `beagle/service/` (separate from the local SQLite engine); FastAPI + PostgreSQL (SQLite for tests)
+  - workspace overlays (base commit + local dirty patch, indexed privately); ownership + explicit sharing
+  - consumers: read-only service MCP for Claude Code, CI comparison report, lightweight read-only admin UI
+  - lives in `beagle/service/` + local bridge in `beagle/bridge/`; FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
 
 - JS-internal call-graph and import resolution (facts stored, edges staged — see `design/14`)
+- JS cross-package symbol edges (JS dependency source is downloaded + indexed; edges staged — see `design/15` §13)
 - PR review
 - GitHub integration
 - embeddings
 - vector databases
 - conversation ingestion
 - long-term memory
-- web UI
-- the Phase I consumer integrations (service MCP/CI/admin UI) and JS cross-package symbol edges —
-  staged in `design/15`, in progress
+- general web UI beyond the read-only admin overview page (`design/15` §21)
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 

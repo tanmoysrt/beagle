@@ -7,12 +7,13 @@ identity, Git repository mirrors, and the HTTP API.
 **Implemented:** Phase A (JWT identity), Phase B (Git repository service),
 Phase C (commit metadata indexing + search), Phase D (per-commit source
 indexing), Phase G (Git identity mapping), Phase H (decision/feedback memory),
-Phase I comparison (compare revisions/branches, merge summary), Phase E
-(dependency parsing, registry download, hash verification, archive-safe unpack,
-artifact caching, Python cross-package resolution), and Phase F (local bridge:
-sync handshake, push-missing-commits, dirty overlays, local-only mode — see
-`beagle/bridge/`). The remaining work is the Phase I consumer integrations
-(MCP/CI/admin UI) and JS cross-package symbol edges.
+Phase I (compare revisions/branches, merge summary, read-only service MCP, CI
+report, admin UI), Phase E (dependency parsing, registry download, hash
+verification, archive-safe unpack, artifact caching, Python cross-package
+resolution), and Phase F (local bridge: sync handshake, push-missing-commits,
+dirty overlays, local-only mode — see `beagle/bridge/`). All design/15 phases
+A–I are implemented; the one remaining sub-item is JS cross-package symbol edges
+(JS dependency source is downloaded, verified, and indexed).
 
 ## Layout
 
@@ -35,6 +36,7 @@ sync handshake, push-missing-commits, dirty overlays, local-only mode — see
 | `dependencies/`, `dependency_store.py`, `dependency_service.py` | Parse manifests/lockfiles, verify hashes, archive-safe unpack, dependency snapshots. |
 | `dependencies/registry.py`, `artifact_cache.py`, `cross_resolve.py`, `dependency_resolution.py` | Download artifacts, index + cache by hash, resolve project imports to dependency symbols. |
 | `workspaces.py`, `workspace_service.py` | Workspace overlays: base commit + local patch, indexed into a private snapshot. |
+| `admin.py`, `api/admin_page.py` | Read-only admin overview (JSON endpoint + minimal HTML page). |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
 | `git/smart_http.py` | Authenticated `git http-backend` proxy. |
@@ -117,6 +119,8 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | POST | `/v1/feedback/{fid}/status` | `feedback:write` |
 | GET | `/v1/repositories/{id}/feedback?entity=` | `feedback:read` + repo scope |
 | POST | `/v1/sessions/{id}/summary` | session owner (or `admin:identity`) |
+| GET | `/v1/admin/overview` | `admin:identity` |
+| GET | `/admin` | static page (token entered in-browser) |
 | GET | `/v1/identities` | `admin:identity` |
 | GET | `/v1/me/identities` | any valid token |
 | POST | `/v1/identities/map` | `admin:identity` |
@@ -149,6 +153,18 @@ beagle-bridge sync press --local-only   # uploads nothing
 The handshake calls `sync-status`; an already-synced commit and snapshot upload
 nothing. Missing commits are pushed over Git Smart HTTP into the user's own ref
 namespace, then indexed.
+
+The bridge also hosts the consumer integrations (Phase I):
+
+```bash
+beagle-bridge ci press <base> <head> --json   # CI comparison report
+beagle-service-mcp                             # read-only MCP for Claude Code
+```
+
+`beagle-service-mcp` exposes revision-aware retrieval (current_user,
+commit_history, search_commits, revision_search, compare_revisions,
+decision_history, feedback_history, dependency_resolutions), each forwarding to
+the service with the stored token. The admin overview is at `/admin`.
 
 ## Tests
 

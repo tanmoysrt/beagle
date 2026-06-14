@@ -11,10 +11,15 @@ import json
 import os
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from beagle.service.errors import AuthenticationError, NotFound, ServiceError
 from beagle.bridge.local_repo import LocalRepository
+
+
+def _q(value: str) -> str:
+    return urllib.parse.quote(value, safe="")
 
 
 class ServiceClient:
@@ -41,6 +46,46 @@ class ServiceClient:
         return self._request(
             "GET", f"/v1/repositories/{repository_id}/sync-status?head={head}"
         )
+
+    # -- read-only retrieval (used by the MCP server and CI) ------------
+    def commit_history(self, repository_id: str, limit: int = 20) -> list[dict]:
+        return self._request(
+            "GET", f"/v1/repositories/{repository_id}/commits?limit={limit}"
+        )["commits"]
+
+    def search_commits(self, repository_id: str, query: str) -> list[dict]:
+        return self._request(
+            "GET", f"/v1/repositories/{repository_id}/commits/search?q={_q(query)}"
+        )["commits"]
+
+    def compare(self, repository_id: str, base: str, head: str) -> dict:
+        return self._request(
+            "GET", f"/v1/repositories/{repository_id}/compare?base={base}&head={head}"
+        )["comparison"]
+
+    def revision_search(self, repository_id: str, revision: str, query: str) -> list[dict]:
+        return self._request(
+            "GET",
+            f"/v1/repositories/{repository_id}/revisions/{revision}/search?q={_q(query)}",
+        )["results"]
+
+    def decision_history(self, repository_id: str, entity: str | None = None) -> list[dict]:
+        suffix = f"?entity={_q(entity)}" if entity else ""
+        return self._request(
+            "GET", f"/v1/repositories/{repository_id}/decisions{suffix}"
+        )["decisions"]
+
+    def feedback_history(self, repository_id: str, entity: str | None = None) -> list[dict]:
+        suffix = f"?entity={_q(entity)}" if entity else ""
+        return self._request(
+            "GET", f"/v1/repositories/{repository_id}/feedback{suffix}"
+        )["feedback"]
+
+    def dependency_resolutions(self, repository_id: str, revision: str) -> list[dict]:
+        return self._request(
+            "GET",
+            f"/v1/repositories/{repository_id}/revisions/{revision}/dependencies/resolutions",
+        )["resolutions"]
 
     def index_revision(self, repository_id: str, revision: str) -> dict:
         return self._request(
