@@ -25,6 +25,8 @@ class ServiceConfig:
     jwt_issuer: str = DEFAULT_ISSUER
     default_token_ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS
     git_binary: str = "git"
+    # Password for the admin web UI. When unset, the UI login is disabled.
+    admin_password: str | None = None
 
     @classmethod
     def from_env(cls) -> "ServiceConfig":
@@ -44,4 +46,5 @@ class ServiceConfig:
                 os.environ.get("BEAGLE_TOKEN_TTL", DEFAULT_TOKEN_TTL_SECONDS)
             ),
             git_binary=os.environ.get("BEAGLE_GIT_BINARY", "git"),
+            admin_password=os.environ.get("BEAGLE_ADMIN_PASSWORD") or None,
         )

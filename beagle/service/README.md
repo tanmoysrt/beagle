@@ -36,7 +36,7 @@ A–I are implemented; the one remaining sub-item is JS cross-package symbol edg
 | `dependencies/`, `dependency_store.py`, `dependency_service.py` | Parse manifests/lockfiles, verify hashes, archive-safe unpack, dependency snapshots. |
 | `dependencies/registry.py`, `artifact_cache.py`, `cross_resolve.py`, `dependency_resolution.py` | Download artifacts, index + cache by hash, resolve project imports to dependency symbols. |
 | `workspaces.py`, `workspace_service.py` | Workspace overlays: base commit + local patch, indexed into a private snapshot. |
-| `admin.py`, `api/admin_page.py` | Read-only admin overview (JSON endpoint + minimal HTML page). |
+| `admin.py`, `admin_auth.py`, `api/admin_page.py` | Password-gated admin web UI: overview, users, repos, token generation. |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
 | `git/smart_http.py` | Authenticated `git http-backend` proxy. |
@@ -67,11 +67,15 @@ anything else. Git objects move over Smart HTTP, never through the JSON API.
 
 ```bash
 export BEAGLE_SERVICE_SECRET="<a long random secret>"      # token signing key
+export BEAGLE_ADMIN_PASSWORD="<admin UI password>"         # enables /admin
 export BEAGLE_DATABASE_URL="sqlite:///beagle-service.db"    # or postgresql://user:pass@host/beagle
 export BEAGLE_REPO_ROOT="/var/lib/beagle/repositories"
 
 beagle-service init-db
 beagle-service serve --host 0.0.0.0 --port 8000 &
+
+# Then manage everything from the web UI at http://localhost:8000/admin
+# (sign in with BEAGLE_ADMIN_PASSWORD). The CLI below does the same headlessly.
 
 # One team is the default — no organization to manage. `setup` creates the user
 # and prints a full token (all permissions, all repositories).
@@ -124,8 +128,11 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | POST | `/v1/feedback/{fid}/status` | `feedback:write` |
 | GET | `/v1/repositories/{id}/feedback?entity=` | `feedback:read` + repo scope |
 | POST | `/v1/sessions/{id}/summary` | session owner (or `admin:identity`) |
+| POST | `/v1/admin/login` | admin password (`BEAGLE_ADMIN_PASSWORD`) |
 | GET | `/v1/admin/overview` | `admin:identity` |
-| GET | `/admin` | static page (token entered in-browser) |
+| POST/GET | `/v1/users` | `admin:identity` |
+| POST | `/v1/admin/tokens` | `admin:identity` |
+| GET | `/admin` | password-gated web UI |
 | GET | `/v1/identities` | `admin:identity` |
 | GET | `/v1/me/identities` | any valid token |
 | POST | `/v1/identities/map` | `admin:identity` |

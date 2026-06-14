@@ -27,6 +27,8 @@ services:
         condition: service_healthy
     environment:
       BEAGLE_SERVICE_SECRET: ${BEAGLE_SERVICE_SECRET:?set BEAGLE_SERVICE_SECRET}
+      # Set to enable the admin web UI at /admin (leave unset to disable it).
+      BEAGLE_ADMIN_PASSWORD: ${BEAGLE_ADMIN_PASSWORD:-}
       BEAGLE_DATABASE_URL: postgresql://beagle:beagle@db:5432/beagle
       BEAGLE_REPO_ROOT: /data/repositories
     ports:

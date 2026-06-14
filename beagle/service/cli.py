@@ -8,6 +8,7 @@ back to environment variables.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import typer
@@ -22,13 +23,17 @@ _ROOT = typer.Option("./beagle-repositories", "--repo-root", envvar="BEAGLE_REPO
 _SECRET = typer.Option(..., "--secret", envvar="BEAGLE_SERVICE_SECRET")
 
 
-def _container(database_url: str, repo_root: str, secret: str) -> ServiceContainer:
-    config = ServiceConfig(
+def _config(database_url: str, repo_root: str, secret: str) -> ServiceConfig:
+    return ServiceConfig(
         database_url=database_url,
         repo_storage_root=Path(repo_root).resolve(),
         jwt_secret=secret,
+        admin_password=os.environ.get("BEAGLE_ADMIN_PASSWORD") or None,
     )
-    return ServiceContainer(config).setup()
+
+
+def _container(database_url: str, repo_root: str, secret: str) -> ServiceContainer:
+    return ServiceContainer(_config(database_url, repo_root, secret)).setup()
 
 
 @app.command("init-db")
@@ -401,12 +406,7 @@ def serve(
 
     from beagle.service.api.app import create_app
 
-    config = ServiceConfig(
-        database_url=database_url,
-        repo_storage_root=Path(repo_root).resolve(),
-        jwt_secret=secret,
-    )
-    uvicorn.run(create_app(config), host=host, port=port)
+    uvicorn.run(create_app(_config(database_url, repo_root, secret)), host=host, port=port)
 
 
 if __name__ == "__main__":

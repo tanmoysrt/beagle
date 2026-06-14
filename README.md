@@ -80,12 +80,16 @@ with Docker:
 
 ```bash
 export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
+export BEAGLE_ADMIN_PASSWORD="choose-a-password"
 docker compose up --build          # API on http://localhost:8000
 ```
 
-See **[docs/guide/shared-service.md](docs/guide/shared-service.md)** for setup,
-the bridge, MCP, CI, and the admin UI, and `beagle/service/README.md` for the
-module map and full API reference.
+Then open **`http://localhost:8000/admin`**, sign in with the password, and
+point-and-click to register repos, add users, and generate each developer's
+copy-paste setup (bridge + Claude Code MCP). No CLI required.
+
+See **[docs/guide/shared-service.md](docs/guide/shared-service.md)** for the full
+walkthrough, and `beagle/service/README.md` for the module map and API reference.
 
 ---
 

@@ -73,7 +73,7 @@ def test_admin_overview_counts(client, app, user_id, tmp_path):
 def test_admin_page_served(client):
     page = client.get("/admin")
     assert page.status_code == 200
-    assert "Beagle service" in page.text
+    assert "beagle" in page.text
     assert "/v1/admin/overview" in page.text
 
 

@@ -690,6 +690,33 @@ def delete_workspace(
     return {"user": identity.user_id, "workspace_id": workspace_id, "deleted": True}
 
 
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    email: str = ""
+    display_name: str = ""
+
+
+class MintTokenRequest(BaseModel):
+    user: str
+    repositories: list[str] = []
+    permissions: list[str] = []
+    ttl_seconds: int | None = None
+    label: str = "admin-ui"
+
+
+@router.post("/admin/login")
+def admin_login(request: Request, body: AdminLoginRequest) -> dict:
+    """Exchange the admin password for an admin JWT (used by the web UI)."""
+    container = container_of(request)
+    with container.database.connect() as conn:
+        token = container.admin_auth.login(conn, body.password)
+    return {"token": token}
+
+
 @router.get("/admin/overview")
 def admin_overview(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
@@ -699,6 +726,62 @@ def admin_overview(
     with container.database.connect() as conn:
         overview = container.admin.overview(conn, identity.organization_id)
     return {"user": identity.user_id, "overview": overview}
+
+
+@router.get("/users")
+def list_users(
+    request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
+) -> dict:
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    with container.database.connect() as conn:
+        users = container.identity.list_users(conn, identity.organization_id)
+    return {"users": [asdict(u) for u in users]}
+
+
+@router.post("/users")
+def create_user(
+    request: Request,
+    body: CreateUserRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    with container.database.connect() as conn:
+        user = container.identity.create_user(
+            conn, identity.organization_id, body.username,
+            body.display_name or body.username, body.email or f"{body.username}@local",
+        )
+        container.audit.record(
+            conn, "user.create", identity.user_id, identity.organization_id,
+            None, request_id(request), {"username": body.username},
+        )
+    return {"user": asdict(user)}
+
+
+@router.post("/admin/tokens")
+def mint_token(
+    request: Request,
+    body: MintTokenRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    """Mint a token for any user (admin only). Returns the token and its jti."""
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    perms = body.permissions or [permissions.SOURCE_READ, permissions.REPO_SYNC,
+                                 permissions.WORKSPACE_CREATE]
+    repos = body.repositories or [permissions.ALL_REPOSITORIES]
+    with container.database.connect() as conn:
+        user = container.identity.resolve_user(conn, body.user)
+        token, record = container.jwt.mint(
+            conn, user.id, repos, perms, body.ttl_seconds, body.label
+        )
+        container.audit.record(
+            conn, "token.mint", identity.user_id, identity.organization_id,
+            None, request_id(request), {"for": user.username, "jti": record.jti},
+        )
+    return {"token": token, "jti": record.jti, "user": user.username,
+            "repositories": repos, "permissions": perms}
 
 
 @router.get("/identities")

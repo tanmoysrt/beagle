@@ -9,77 +9,108 @@ The primary identity of code is `repository + commit`; a branch is just a
 mutable pointer. The service lives in `beagle/service/`, the local client in
 `beagle/bridge/`. Both are separate from the local SQLite engine.
 
-There's no tenant or organization to manage — a single team is the default. You
-create a user, register repositories, and go.
+There's no tenant or organization to manage — a single team is the default. The
+recommended way to drive it is the **admin web UI**: everything (users, repos,
+access) is point-and-click, and it hands each developer copy-paste setup. The
+CLI is still there if you prefer it.
 
-## Quick start (local, SQLite)
+## 1 · Start the service
 
-The shortest path to a running service on your machine. `git` must be on `PATH`
-(the mirror and Git Smart HTTP shell out to it).
+Pick one. Set an **admin password** — it gates the web UI.
 
-```bash
+::: code-group
+
+```bash [Docker (team / Postgres)]
+export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)   # token signing key
+export BEAGLE_ADMIN_PASSWORD="choose-a-strong-password"
+docker compose up --build                              # http://localhost:8000
+```
+
+```bash [Local (SQLite)]
 uv sync
-
-# The signing key for tokens. Set once; keep it (rotating invalidates tokens).
 export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
+export BEAGLE_ADMIN_PASSWORD="choose-a-strong-password"
 export BEAGLE_DATABASE_URL="sqlite:///$PWD/beagle-service.db"
 export BEAGLE_REPO_ROOT="$PWD/beagle-repositories"
-
-# Start the API (creates tables on first run).
-uv run beagle-service init-db
-uv run beagle-service serve &           # http://localhost:8000
+uv run beagle-service serve            # http://localhost:8000  (git must be on PATH)
 ```
 
-In another shell (same env vars), create yourself a user and a token:
+:::
 
-```bash
-uv run beagle-service setup tanmoy --email tanmoy@example.com
-```
+Add `BEAGLE_ADMIN_PASSWORD` under `service.environment` in `docker-compose.yml`
+(or pass `-e`) so the container picks it up.
 
-`setup` prints a token with all permissions — perfect for a solo local install.
-That's the whole identity step; no org, no separate grant.
+## 2 · Open the admin UI
 
-Then register and index a repository:
+Go to **`http://localhost:8000/admin`** and sign in with the admin password.
+From there:
 
-```bash
-REPO=$(uv run beagle-service repo-register press "Press" \
-        --remote-url https://github.com/frappe/press)
-uv run beagle-service repo-sync "$REPO"   # mirror + index commit metadata + identities
-```
+1. **Register a repository** — name, slug, and (optionally) a Git remote URL.
+   With a URL it is mirrored and indexed on save; without one it waits for a
+   developer to push from their machine.
+2. **Add users** — one row each (username, optional email).
+3. **Grant access** — pick a user and click *Generate setup*. The UI shows two
+   copy-paste blocks for that user:
+   - the **bridge** commands (`beagle-bridge login …`), and
+   - a ready-made **`.mcp.json`** for Claude Code.
 
-Point your machine at it:
+   The token it embeds is a credential — share it over a private channel.
+
+The dashboard also shows live counts and each repository's commit/snapshot
+totals. The page only ever holds the admin session in your browser; close the
+tab and you're signed out.
+
+> The admin UI is admin-only by design. It doesn't log developers in — it
+> *generates* their setup. Each developer just pastes what they're given.
+
+## 3 · Developer setup (from the UI's instructions)
+
+A developer pastes the bridge block, then works normally:
 
 ```bash
 export BEAGLE_SERVICE_URL=http://localhost:8000
-uv run beagle-bridge login --token "<token from setup>"
-uv run beagle-bridge whoami
+beagle-bridge login --token <token from the admin UI>
+
+# inside a checkout of the repo — the bridge auto-detects it:
+beagle-bridge sync <repo-slug>
 ```
 
-You're done — see [Use it from Claude Code](#use-it-from-claude-code-mcp) below.
+For Claude Code, they drop the generated `.mcp.json` into the project (see
+[Use it from Claude Code](#use-it-from-claude-code-mcp)).
 
-## Run it with Docker (team / Postgres)
+## Prefer the CLI?
 
-For a shared deployment, compose runs the service with PostgreSQL:
+Everything the UI does is also a CLI command. The one-shot path:
 
 ```bash
-export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
-docker compose up --build              # API on http://localhost:8000
+uv run beagle-service setup tanmoy --email tanmoy@example.com   # user + full token
+REPO=$(uv run beagle-service repo-register press "Press" \
+        --remote-url https://github.com/frappe/press)
+uv run beagle-service repo-sync "$REPO"
 ```
+
+`setup` prints a token with all permissions and all repositories — no org, no
+separate grant. See [Users and tokens](#users-and-tokens) for the rest.
+
+## Docker details
+
+`docker compose up --build` runs the service with PostgreSQL. Check it:
 
 ```bash
 curl http://localhost:8000/healthz     # {"status":"ok"}
 ```
 
-Run admin commands inside the container, e.g.:
+Mirrors, snapshots, and downloaded artifacts persist in the `beagle-data`
+volume; PostgreSQL data in `beagle-db`. Run any CLI command inside the container
+if you skip the UI, e.g.:
 
 ```bash
 docker compose exec service beagle-service setup tanmoy --email t@example.com
 ```
 
-Mirrors, snapshots, and downloaded artifacts persist in the `beagle-data`
-volume; PostgreSQL data in `beagle-db`. For a single-node image without
-Postgres, `docker build -t beagle-service . && docker run -p 8000:8000 -e
-BEAGLE_SERVICE_SECRET=... -v beagle-data:/data beagle-service` uses SQLite at
+For a single-node image without Postgres, `docker build -t beagle-service . &&
+docker run -p 8000:8000 -e BEAGLE_SERVICE_SECRET=... -e
+BEAGLE_ADMIN_PASSWORD=... -v beagle-data:/data beagle-service` uses SQLite at
 `/data`.
 
 ## Users and tokens
@@ -179,12 +210,23 @@ Python cross-package symbol resolution is complete (e.g. `press.Site` →
 `frappe.Document`). JavaScript dependency source is downloaded and indexed;
 JS symbol edges across packages are a follow-up.
 
-## Admin overview
+## Admin UI reference
 
-A read-only dashboard is served at `http://localhost:8000/admin`. Paste an
-`admin:identity` token to see org counts, repositories with commit/snapshot
-totals, and recent audit activity. The JSON behind it is
-`GET /v1/admin/overview`.
+The web UI at `http://localhost:8000/admin` is gated by `BEAGLE_ADMIN_PASSWORD`.
+Signing in exchanges the password for a short-lived admin token
+(`POST /v1/admin/login`) held only in your browser. It drives these endpoints
+(all requiring the `admin:identity` scope):
+
+| Action | Endpoint |
+| --- | --- |
+| Sign in | `POST /v1/admin/login` |
+| Overview (counts, repos, audit) | `GET /v1/admin/overview` |
+| Add / list users | `POST /v1/users`, `GET /v1/users` |
+| Register / sync repo | `POST /v1/repositories`, `POST /v1/repositories/{id}/sync` |
+| Generate a user's token | `POST /v1/admin/tokens` |
+
+If `BEAGLE_ADMIN_PASSWORD` is unset, the UI login is disabled and you manage the
+service with the CLI instead.
 
 ## What the service does
 
