@@ -66,19 +66,32 @@ access, and mint a token. With Docker, prefix each command with
 
 ```bash
 ORG=$(beagle-service org-create frappe "Frappe")
-USER=$(beagle-service user-create "$ORG" tanmoy "Tanmoy" tanmoy@example.com)
+beagle-service user-create "$ORG" tanmoy "Tanmoy" tanmoy@example.com
 
 REPO=$(beagle-service repo-register "$ORG" press "Press" \
         --remote-url https://github.com/frappe/press)
 beagle-service repo-sync "$REPO"          # mirror + index commit metadata + identities
 
-beagle-service grant "$USER" "$REPO" "source:read,repo:sync"
-beagle-service token-mint "$USER" --repos press \
+# `grant` and `token-mint` accept a username or a user id.
+beagle-service grant tanmoy "$REPO" "source:read,repo:sync"
+beagle-service token-mint tanmoy --repos press \
   --permissions source:read,repo:sync,decision:write
 ```
 
 The last command prints the JWT. It is the user's credential — store it with the
-bridge, never in a repository.
+bridge, never in a repository. List users any time with
+`beagle-service user-list "$ORG"`.
+
+### Admin token
+
+An *admin token* is just a JWT that carries the `admin:identity` scope; it
+unlocks the admin overview and identity-mapping endpoints. Mint one with:
+
+```bash
+beagle-service token-mint tanmoy --permissions admin:identity
+```
+
+(`BEAGLE_SERVICE_SECRET` is **not** a token — it is the server's signing key.)
 
 ### Permissions
 

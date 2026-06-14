@@ -76,6 +76,32 @@ class IdentityStore:
             raise NotFound(f"user not found: {user_id}")
         return _user_from_row(row)
 
+    def list_users(self, conn: Connection, organization_id: str) -> list[User]:
+        rows = conn.fetch_all(
+            "SELECT * FROM users WHERE organization_id = ? ORDER BY username",
+            (organization_id,),
+        )
+        return [_user_from_row(row) for row in rows]
+
+    def resolve_user(self, conn: Connection, value: str) -> User:
+        """Resolve a user by id, or by a username unique across organizations.
+
+        Lets admin commands accept a friendly username instead of the internal
+        id. A username shared by users in different organizations is ambiguous
+        and must be disambiguated with the id.
+        """
+        row = conn.fetch_one("SELECT * FROM users WHERE id = ?", (value,))
+        if row:
+            return _user_from_row(row)
+        matches = conn.fetch_all("SELECT * FROM users WHERE username = ?", (value,))
+        if not matches:
+            raise NotFound(f"user not found: {value}")
+        if len(matches) > 1:
+            raise Conflict(
+                f"username '{value}' exists in several organizations; use the user id"
+            )
+        return _user_from_row(matches[0])
+
     # -- repository access ----------------------------------------------
     def grant_access(
         self,

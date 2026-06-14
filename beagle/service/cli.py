@@ -60,6 +60,19 @@ def user_create(
     typer.echo(user.id)
 
 
+@app.command("user-list")
+def user_list(
+    organization_id: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    """List users in an organization (id, username, email)."""
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        users = container.identity.list_users(conn, organization_id)
+    for user in users:
+        typer.echo(f"{user.id}  {user.username}  <{user.email}>")
+
+
 @app.command("repo-register")
 def repo_register(
     organization_id: str, slug: str, name: str,
@@ -115,31 +128,34 @@ def commit_show(
 
 @app.command("grant")
 def grant(
-    user_id: str, repository_id: str, permissions: str,
+    user: str, repository_id: str, permissions: str,
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
-    """Grant repository access. PERMISSIONS is a comma-separated list."""
+    """Grant repository access. USER is a user id or username. PERMISSIONS is comma-separated."""
     container = _container(database_url, repo_root, secret)
     perms = [p.strip() for p in permissions.split(",") if p.strip()]
     with container.database.connect() as conn:
-        container.identity.grant_access(conn, user_id, repository_id, perms)
+        resolved = container.identity.resolve_user(conn, user)
+        container.identity.grant_access(conn, resolved.id, repository_id, perms)
     typer.echo("granted")
 
 
 @app.command("token-mint")
 def token_mint(
-    user_id: str,
+    user: str,
     repositories: str = typer.Option("", "--repos", help="comma-separated repo slugs"),
     permissions: str = typer.Option("source:read", "--permissions"),
     ttl_seconds: int = typer.Option(None, "--ttl"),
     label: str = typer.Option("", "--label"),
     database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
 ) -> None:
+    """Mint a JWT. USER is a user id or a username unique across organizations."""
     container = _container(database_url, repo_root, secret)
     repos = [r.strip() for r in repositories.split(",") if r.strip()]
     perms = [p.strip() for p in permissions.split(",") if p.strip()]
     with container.database.connect() as conn:
-        token, record = container.jwt.mint(conn, user_id, repos, perms, ttl_seconds, label)
+        resolved = container.identity.resolve_user(conn, user)
+        token, record = container.jwt.mint(conn, resolved.id, repos, perms, ttl_seconds, label)
     typer.echo(f"jti: {record.jti}")
     typer.echo(token)
 

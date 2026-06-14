@@ -54,3 +54,34 @@ def test_get_unknown_user_raises(db, identity):
     with db.connect() as conn:
         with pytest.raises(NotFound):
             identity.get_user(conn, "user_missing")
+
+
+def test_resolve_user_by_id_or_username(db, identity):
+    with db.connect() as conn:
+        org = identity.create_organization(conn, "frappe", "Frappe")
+        user = identity.create_user(conn, org.id, "tanmoy", "T", "t@example.com")
+        assert identity.resolve_user(conn, user.id).id == user.id
+        assert identity.resolve_user(conn, "tanmoy").id == user.id
+        with pytest.raises(NotFound):
+            identity.resolve_user(conn, "ghost")
+
+
+def test_resolve_ambiguous_username_rejected(db, identity):
+    from beagle.service.errors import Conflict
+
+    with db.connect() as conn:
+        org_a = identity.create_organization(conn, "a", "A")
+        org_b = identity.create_organization(conn, "b", "B")
+        identity.create_user(conn, org_a.id, "tanmoy", "T", "a@example.com")
+        identity.create_user(conn, org_b.id, "tanmoy", "T", "b@example.com")
+        with pytest.raises(Conflict):
+            identity.resolve_user(conn, "tanmoy")
+
+
+def test_list_users(db, identity):
+    with db.connect() as conn:
+        org = identity.create_organization(conn, "frappe", "Frappe")
+        identity.create_user(conn, org.id, "alice", "A", "a@example.com")
+        identity.create_user(conn, org.id, "bob", "B", "b@example.com")
+        usernames = [u.username for u in identity.list_users(conn, org.id)]
+    assert usernames == ["alice", "bob"]
