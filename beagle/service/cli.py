@@ -155,6 +155,44 @@ def token_revoke(
     typer.echo("revoked")
 
 
+@app.command("identity-list")
+def identity_list(
+    organization_id: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        identities = container.git_identities.list_identities(conn, organization_id)
+    for ident in identities:
+        owner = ident.verified_user_id or "(unclaimed)"
+        typer.echo(f"{ident.email}  {ident.name}  commits={ident.commit_count}  -> {owner}")
+
+
+@app.command("identity-harvest")
+def identity_harvest(
+    organization_id: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    """Recompute Git identities from indexed commits and auto-map by email."""
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        count = container.git_identities.harvest(conn, organization_id)
+        mapped = container.git_identities.auto_map_by_email(conn, organization_id)
+    typer.echo(f"harvested {count} identities, auto-mapped {mapped}")
+
+
+@app.command("identity-map")
+def identity_map(
+    organization_id: str, email: str, user_id: str,
+    method: str = typer.Option("admin", "--method"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        container.git_identities.map_identity(conn, organization_id, email, user_id, method)
+    typer.echo("mapped")
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host"),

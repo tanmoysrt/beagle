@@ -1685,12 +1685,12 @@ who shared a workspace
 
 ## Phase G — identity mapping
 
-- [ ] Store Git identities.
-- [ ] Support verified mappings.
-- [ ] Support several emails per user.
-- [ ] Keep ambiguous identities unclaimed.
-- [ ] Parse co-author and review trailers.
-- [ ] Keep decision roles distinct from commit roles.
+- [x] Store Git identities.
+- [x] Support verified mappings. *(email auto-map, admin map, explicit claim)*
+- [x] Support several emails per user.
+- [x] Keep ambiguous identities unclaimed.
+- [x] Parse co-author and review trailers.
+- [x] Keep decision roles distinct from commit roles. *(commit roles are identity evidence; decision roles are Phase H)*
 
 ## Phase H — decisions and feedback
 

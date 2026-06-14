@@ -164,6 +164,23 @@ _V2 = [
     "CREATE INDEX IF NOT EXISTS idx_parents_child ON git_commit_parents(repository_id, child_sha)",
 ]
 
-MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2)]
+_V3 = [
+    """
+    CREATE TABLE IF NOT EXISTS git_identities (
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        verified_user_id TEXT REFERENCES users(id),
+        verification_method TEXT,
+        first_seen INTEGER NOT NULL,
+        last_seen INTEGER NOT NULL,
+        commit_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (organization_id, email)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_identities_user ON git_identities(verified_user_id)",
+]
+
+MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2), (3, _V3)]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

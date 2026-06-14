@@ -141,6 +141,37 @@ def test_commit_history_requires_repo_scope(client, app, user_id, tmp_path):
     assert response.status_code == 403
 
 
+def test_identity_endpoints(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.ADMIN_IDENTITY],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+
+    listed = client.get("/v1/identities", headers=_auth(token)).json()
+    assert any(i["email"] == "u@e.com" for i in listed["identities"])
+
+    # Map the historical author email to the authenticated user, then verify /me/identities.
+    client.post(
+        "/v1/identities/map",
+        json={"email": "u@e.com", "user_id": user_id, "method": "admin"},
+        headers=_auth(token),
+    )
+    mine = client.get("/v1/me/identities", headers=_auth(token)).json()
+    assert [i["email"] for i in mine["identities"]] == ["u@e.com"]
+
+
+def test_identity_list_requires_admin(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
+    assert client.get("/v1/identities", headers=_auth(token)).status_code == 403
+
+
 def test_session_open_and_end(client, app, user_id):
     token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
     opened = client.post("/v1/sessions", json={"client_name": "claude-code"}, headers=_auth(token))

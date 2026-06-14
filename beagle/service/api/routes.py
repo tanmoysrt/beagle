@@ -34,6 +34,16 @@ class OpenSessionRequest(BaseModel):
     initial_revision: str | None = None
 
 
+class MapIdentityRequest(BaseModel):
+    email: str
+    user_id: str
+    method: str = "admin"
+
+
+class ClaimIdentityRequest(BaseModel):
+    email: str
+
+
 @router.get("/me")
 def current_user(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
@@ -160,6 +170,69 @@ def commit_detail(
         permissions.require_permission(identity.permissions, permissions.SOURCE_READ)
         commit = container.commits.get_commit(conn, repository_id, sha)
     return {"user": identity.user_id, "commit": commit}
+
+
+@router.get("/identities")
+def list_git_identities(
+    request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
+) -> dict:
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    with container.database.connect() as conn:
+        rows = container.git_identities.list_identities(conn, identity.organization_id)
+    return {"user": identity.user_id, "identities": [asdict(r) for r in rows]}
+
+
+@router.get("/me/identities")
+def my_git_identities(
+    request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        rows = container.git_identities.list_for_user(
+            conn, identity.organization_id, identity.user_id
+        )
+    return {"user": identity.user_id, "identities": [asdict(r) for r in rows]}
+
+
+@router.post("/identities/map")
+def map_git_identity(
+    request: Request,
+    body: MapIdentityRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+    container = container_of(request)
+    with container.database.connect() as conn:
+        mapped = container.git_identities.map_identity(
+            conn, identity.organization_id, body.email, body.user_id, body.method
+        )
+        container.audit.record(
+            conn, "identity.map", identity.user_id, identity.organization_id,
+            None, request_id(request), {"email": body.email, "user": body.user_id},
+        )
+    return {"user": identity.user_id, "identity": asdict(mapped)}
+
+
+@router.post("/identities/claim")
+def claim_git_identity(
+    request: Request,
+    body: ClaimIdentityRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        existing = container.git_identities.get(conn, identity.organization_id, body.email)
+        if existing.verified_user_id and existing.verified_user_id != identity.user_id:
+            permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+        mapped = container.git_identities.map_identity(
+            conn, identity.organization_id, body.email, identity.user_id, "claim"
+        )
+        container.audit.record(
+            conn, "identity.claim", identity.user_id, identity.organization_id,
+            None, request_id(request), {"email": body.email},
+        )
+    return {"user": identity.user_id, "identity": asdict(mapped)}
 
 
 @router.post("/sessions")

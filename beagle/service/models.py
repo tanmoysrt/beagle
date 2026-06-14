@@ -77,6 +77,24 @@ class GitRef:
 
 
 @dataclass
+class GitIdentity:
+    """A name+email seen in Git history, optionally mapped to a verified user.
+
+    The email is the identity anchor (design/15 §5: never map by display-name
+    similarity). ``verified_user_id`` is None for unclaimed historical authors.
+    """
+
+    organization_id: str
+    email: str
+    name: str
+    verified_user_id: str | None
+    verification_method: str | None
+    first_seen: int
+    last_seen: int
+    commit_count: int
+
+
+@dataclass
 class McpSession:
     id: str
     user_id: str

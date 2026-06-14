@@ -14,6 +14,7 @@ from beagle.service.commit_indexer import CommitIndexer
 from beagle.service.db import Connection
 from beagle.service.git import refs as ref_ns
 from beagle.service.git.mirror import GitMirror, RefEntry
+from beagle.service.git_identities import GitIdentityStore
 from beagle.service.models import Repository
 from beagle.service.repositories import RepositoryStore
 
@@ -30,11 +31,16 @@ class RepositoryService:
     """Registers and synchronizes repositories."""
 
     def __init__(
-        self, store: RepositoryStore, mirror: GitMirror, commit_indexer: CommitIndexer
+        self,
+        store: RepositoryStore,
+        mirror: GitMirror,
+        commit_indexer: CommitIndexer,
+        identities: GitIdentityStore,
     ):
         self._store = store
         self._mirror = mirror
         self._commit_indexer = commit_indexer
+        self._identities = identities
 
     def register(
         self,
@@ -66,6 +72,8 @@ class RepositoryService:
         entries = self._mirror.list_refs(repository_id)
         self._persist_refs(conn, repository_id, entries)
         new_commits = self._commit_indexer.index(conn, repository_id)
+        self._identities.harvest(conn, repo.organization_id)
+        self._identities.auto_map_by_email(conn, repo.organization_id)
         self._store.set_ingestion_state(conn, repository_id, "synced")
         return SyncResult(repository_id, len(entries), "synced", new_commits)
 
