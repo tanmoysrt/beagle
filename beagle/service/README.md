@@ -7,12 +7,13 @@ identity, Git repository mirrors, and the HTTP API.
 **Implemented:** Phase A (JWT identity), Phase B (Git repository service),
 Phase C (commit metadata indexing + search), Phase D (per-commit source
 indexing), Phase G (Git identity mapping), Phase H (decision/feedback memory),
-Phase I comparison (compare revisions/branches, merge summary), and the
+Phase I comparison (compare revisions/branches, merge summary), the
 deterministic core of Phase E (dependency manifest/lockfile parsing, hash
-verification, archive-safe unpack). The remaining work is Phase F (local
-bridge), the network-bound rest of Phase E (registry download → index
-downloaded source → cross-package resolution), and the Phase I consumer
-integrations (MCP/CI/admin UI).
+verification, archive-safe unpack), and Phase F (local bridge: sync handshake,
+push-missing-commits, local-only mode — see `beagle/bridge/`). The remaining
+work is the network-bound rest of Phase E (registry download → index downloaded
+source → cross-package resolution) and the Phase I consumer integrations
+(MCP/CI/admin UI).
 
 ## Layout
 
@@ -94,6 +95,7 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | GET | `/v1/repositories/{id}/revisions/{rev}` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/revisions/{rev}/search?q=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/snapshots` | `source:read` + repo scope |
+| GET | `/v1/repositories/{id}/sync-status?head=` | `source:read` + repo scope |
 | POST | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `repo:sync` + repo scope |
 | GET | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/dependencies/search?q=` | `source:read` + repo scope |
@@ -122,6 +124,24 @@ Fetch a Beagle ref with the token, e.g.:
 git -c http.extraHeader="Authorization: Bearer $TOKEN" \
     fetch http://host:8000/git/$REPO.git refs/beagle/upstream/heads/main
 ```
+
+## Local bridge
+
+The client-side bridge lives in `beagle/bridge/` (`beagle-bridge` CLI). It stores
+the token locally (never in the repo), discovers the working repository, and
+synchronizes the current HEAD with the minimum upload:
+
+```bash
+export BEAGLE_SERVICE_URL="http://localhost:8000"
+beagle-bridge login --token "<jwt>"
+beagle-bridge whoami
+beagle-bridge sync press                # push missing HEAD + index if needed
+beagle-bridge sync press --local-only   # uploads nothing
+```
+
+The handshake calls `sync-status`; an already-synced commit and snapshot upload
+nothing. Missing commits are pushed over Git Smart HTTP into the user's own ref
+namespace, then indexed.
 
 ## Tests
 

@@ -224,6 +224,30 @@ def _repo_slug(container, conn, repository_id):
     return container.repositories.get(conn, repository_id).slug
 
 
+@router.get("/repositories/{repository_id}/sync-status")
+def sync_status(
+    request: Request,
+    repository_id: str,
+    head: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    """Tell the bridge whether the service already has a commit and its snapshot."""
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    has_commit = container.mirror.has_commit(repository_id, head)
+    has_snapshot = False
+    with container.database.connect() as conn:
+        snapshot = container.snapshots.find(conn, repository_id, head)
+        has_snapshot = bool(snapshot and snapshot.status == "ready")
+    return {
+        "user": identity.user_id,
+        "repository_id": repository_id,
+        "head": head,
+        "has_commit": has_commit,
+        "has_snapshot": has_snapshot,
+    }
+
+
 @router.post("/repositories/{repository_id}/revisions/{revision}/index")
 def index_revision(
     request: Request,

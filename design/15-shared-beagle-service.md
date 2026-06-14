@@ -1684,14 +1684,14 @@ builds on these primitives and is the remaining work.
 
 ## Phase F — local bridge
 
-- [ ] Discover repository.
-- [ ] Read JWT from keyring.
-- [ ] Perform sync handshake.
-- [ ] Push only missing commits.
-- [ ] Send dirty patches as overlays.
-- [ ] Detect local changes.
-- [ ] Support local-only mode.
-- [ ] Avoid repeated uploads.
+- [x] Discover repository. *(reuses find_repo_root)*
+- [x] Read JWT from keyring. *(env -> 0600 file -> optional keyring)*
+- [x] Perform sync handshake. *(sync-status: has_commit / has_snapshot)*
+- [x] Push only missing commits. *(git push to the user's own ref namespace, only when absent)*
+- [~] Send dirty patches as overlays. *(dirty patch + fingerprint detected; overlay upload awaits WorkspaceOverlay)*
+- [x] Detect local changes.
+- [x] Support local-only mode. *(uploads nothing)*
+- [x] Avoid repeated uploads. *(already-synced commit and snapshot upload nothing)*
 
 ## Phase G — identity mapping
 

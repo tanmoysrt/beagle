@@ -22,6 +22,7 @@ beagle = "beagle.cli:app"
 beagle-mcp = "beagle.mcp.server:main"
 beagle-bench = "beagle.benchmarks.report:main"
 beagle-service = "beagle.service.cli:app"
+beagle-bridge = "beagle.bridge.cli:app"
 
 [build-system]
 requires = ["hatchling"]

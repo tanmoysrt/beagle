@@ -44,8 +44,8 @@ Current scope:
 - read-only MCP server for Claude Code
 - JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
 - frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
-- shared multi-tenant service: JWT identity, Git mirroring, commit metadata, identity mapping,
-  per-commit source indexing (see `design/15`, Phases A–D, G–I)
+- shared multi-tenant service + local bridge: JWT identity, Git mirroring, commit metadata, identity
+  mapping, per-commit source indexing (see `design/15`, Phases A–I; E network slice + I consumers pending)
   - organizations, users, server-minted JWTs, repository-scoped permissions, MCP sessions, audit log
   - bare Git mirrors, authenticated Smart HTTP, ref namespaces with per-user push scoping
   - Tier-0 commit metadata: full messages, separate author/committer identities + timezones, parent
@@ -75,9 +75,9 @@ Current non-goals:
 - conversation ingestion
 - long-term memory
 - web UI
-- service Phase F (local bridge), the network-bound rest of Phase E (registry download → index
-  downloaded source → cross-package resolution), and the Phase I consumer integrations
-  (MCP/CI/admin UI) — staged in `design/15`, not yet built
+- the network-bound rest of Phase E (registry download → index downloaded source → cross-package
+  resolution) and the Phase I consumer integrations (MCP/CI/admin UI) — staged in `design/15`,
+  not yet built
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 
