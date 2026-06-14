@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.beagle
+beagle-repositories
+beagle-service.db
+docs/node_modules
+docs/.vitepress/cache
+docs/.vitepress/dist
+tests
+*.md
+!README.md

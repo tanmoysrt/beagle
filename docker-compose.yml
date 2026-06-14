@@ -1,0 +1,39 @@
+# Run the Beagle shared service with PostgreSQL.
+#
+#   BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32) docker compose up --build
+#
+# The service listens on http://localhost:8000. Mirrors, snapshots, and
+# downloaded dependency artifacts persist in the `beagle-data` volume.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: beagle
+      POSTGRES_PASSWORD: beagle
+      POSTGRES_DB: beagle
+    volumes:
+      - beagle-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beagle"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  service:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      BEAGLE_SERVICE_SECRET: ${BEAGLE_SERVICE_SECRET:?set BEAGLE_SERVICE_SECRET}
+      BEAGLE_DATABASE_URL: postgresql://beagle:beagle@db:5432/beagle
+      BEAGLE_REPO_ROOT: /data/repositories
+    ports:
+      - "8000:8000"
+    volumes:
+      - beagle-data:/data
+
+volumes:
+  beagle-db:
+  beagle-data:
