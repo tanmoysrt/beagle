@@ -5,8 +5,11 @@ export default defineConfig({
   description:
     'Local, deterministic code-discovery for Python, Frappe, and their JS/TS/Vue frontends.',
   lang: 'en-US',
+  // Served from https://<user>.github.io/beagle/ on GitHub Pages.
+  base: '/beagle/',
   cleanUrls: true,
   lastUpdated: true,
+  ignoreDeadLinks: true,
 
   themeConfig: {
     logo: '/logo.svg',
