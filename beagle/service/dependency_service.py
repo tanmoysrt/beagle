@@ -11,7 +11,12 @@ from dataclasses import dataclass
 
 from beagle.service.db import Database
 from beagle.service.dependencies import ParsedPackage
-from beagle.service.dependencies.js_manifests import parse_package_json, parse_package_lock
+from beagle.service.dependencies.js_manifests import (
+    parse_package_json,
+    parse_package_lock,
+    parse_pnpm_lock,
+    parse_yarn_lock,
+)
 from beagle.service.dependencies.python_manifests import (
     parse_poetry_lock,
     parse_pylock,
@@ -31,6 +36,8 @@ _PYTHON_SOURCES = [
 ]
 _JS_SOURCES = [
     ("package-lock.json", parse_package_lock),
+    ("pnpm-lock.yaml", parse_pnpm_lock),
+    ("yarn.lock", parse_yarn_lock),
     ("package.json", parse_package_json),
 ]
 

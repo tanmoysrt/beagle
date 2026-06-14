@@ -260,6 +260,18 @@ def dependencies(
     typer.echo(f"{result.package_count} packages from {', '.join(result.sources) or '(none)'}")
 
 
+@app.command("resolve-dependencies")
+def resolve_dependencies(
+    repository_id: str, revision: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    """Download dependency source and resolve project imports across packages."""
+    container = _container(database_url, repo_root, secret)
+    summary = container.dependency_resolution.resolve_revision(repository_id, revision)
+    typer.echo(f"downloaded {summary.downloaded} packages, {summary.indexed_modules} modules")
+    typer.echo(f"resolved {summary.resolved}, unresolved {summary.unresolved}")
+
+
 @app.command("compare-revisions")
 def compare_revisions(
     repository_id: str, base: str, head: str,

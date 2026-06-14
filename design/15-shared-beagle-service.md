@@ -1668,19 +1668,21 @@ later optimization; snapshots are currently full per commit.
 ## Phase E — dependency analysis
 
 - [x] Parse Python manifests and lockfiles. *(uv.lock, poetry.lock, pylock.toml, requirements.txt)*
-- [x] Parse JavaScript manifests and lockfiles. *(package-lock.json v2/v3, package.json; pnpm/yarn YAML deferred)*
-- [ ] Download exact artifacts. *(network slice — primitives ready; registry fetch not wired)*
+- [x] Parse JavaScript manifests and lockfiles. *(package-lock.json v2/v3, pnpm-lock.yaml, yarn.lock v1, package.json)*
+- [x] Download exact artifacts. *(PyPI JSON index + npm registry; fetch overridable for tests)*
 - [x] Verify hashes. *(sha256 hexdigest and npm sha512-base64 integrity)*
 - [x] Safely unpack. *(size/file-count limits, path-traversal + symlink rejection, tar/zip)*
-- [ ] Index Python and JS source. *(reuses the engine once artifacts are downloaded — deferred with download)*
-- [ ] Resolve imports and inheritance across packages. *(cross-package resolution — deferred)*
-- [x] Cache by artifact hash. *(packages stored with artifact hash; snapshot keyed by repo+commit+profile)*
-- [x] Run no package scripts. *(parsing + verified unpack only; no install/build/lifecycle execution)*
+- [x] Index Python and JS source. *(downloaded artifact indexed by the engine, cached by hash)*
+- [x] Resolve imports and inheritance across packages. *(Python: import + symbol resolution with provenance; JS symbol edges remain a follow-up)*
+- [x] Cache by artifact hash. *(artifact unpacked + indexed once per hash, reused across repositories)*
+- [x] Run no package scripts. *(parsing + verified unpack + static indexing only; no install/build/lifecycle execution)*
 
-Delivered: deterministic, offline manifest/lockfile parsing into dependency
-snapshots, hash verification, and archive-safe unpacking. The network-bound
-slice (registry download → index downloaded source → cross-package resolution)
-builds on these primitives and is the remaining work.
+Cross-package *symbol* resolution is implemented for Python (the design's
+press→frappe example): a project import resolves to the exact dependency version
+that provides the module, and imported symbols resolve to entities in that
+version, with package/version/hash provenance. JavaScript artifacts are
+downloaded, verified, and indexed; resolving JS symbol edges across packages is
+the remaining follow-up.
 
 ## Phase F — local bridge
 

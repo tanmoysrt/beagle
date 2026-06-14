@@ -337,8 +337,29 @@ _V7 = [
     "ALTER TABLE decisions ADD COLUMN commit_sha TEXT",
 ]
 
+_V8 = [
+    """
+    CREATE TABLE IF NOT EXISTS dependency_resolutions (
+        id TEXT PRIMARY KEY,
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        commit_sha TEXT NOT NULL,
+        import_module TEXT NOT NULL,
+        symbol TEXT,
+        package TEXT NOT NULL,
+        version TEXT NOT NULL,
+        artifact_hash TEXT NOT NULL,
+        resolved INTEGER NOT NULL DEFAULT 0,
+        confidence REAL NOT NULL DEFAULT 0.9,
+        evidence TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_resolutions_commit ON dependency_resolutions(repository_id, commit_sha)",
+    "CREATE INDEX IF NOT EXISTS idx_resolutions_package ON dependency_resolutions(package)",
+]
+
 MIGRATIONS: list[tuple[int, list[str]]] = [
-    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5), (6, _V6), (7, _V7)
+    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5), (6, _V6), (7, _V7), (8, _V8)
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

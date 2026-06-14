@@ -7,13 +7,12 @@ identity, Git repository mirrors, and the HTTP API.
 **Implemented:** Phase A (JWT identity), Phase B (Git repository service),
 Phase C (commit metadata indexing + search), Phase D (per-commit source
 indexing), Phase G (Git identity mapping), Phase H (decision/feedback memory),
-Phase I comparison (compare revisions/branches, merge summary), the
-deterministic core of Phase E (dependency manifest/lockfile parsing, hash
-verification, archive-safe unpack), and Phase F (local bridge: sync handshake,
-push-missing-commits, local-only mode — see `beagle/bridge/`). The remaining
-work is the network-bound rest of Phase E (registry download → index downloaded
-source → cross-package resolution) and the Phase I consumer integrations
-(MCP/CI/admin UI).
+Phase I comparison (compare revisions/branches, merge summary), Phase E
+(dependency parsing, registry download, hash verification, archive-safe unpack,
+artifact caching, Python cross-package resolution), and Phase F (local bridge:
+sync handshake, push-missing-commits, dirty overlays, local-only mode — see
+`beagle/bridge/`). The remaining work is the Phase I consumer integrations
+(MCP/CI/admin UI) and JS cross-package symbol edges.
 
 ## Layout
 
@@ -34,6 +33,7 @@ source → cross-package resolution) and the Phase I consumer integrations
 | `revision_compare.py` | Compare revisions/branches and summarize merges (files, entities, commits, authors). |
 | `decisions.py`, `feedback_store.py` | Change episodes, decisions + actors (roles/confirmation), feedback lifecycle. |
 | `dependencies/`, `dependency_store.py`, `dependency_service.py` | Parse manifests/lockfiles, verify hashes, archive-safe unpack, dependency snapshots. |
+| `dependencies/registry.py`, `artifact_cache.py`, `cross_resolve.py`, `dependency_resolution.py` | Download artifacts, index + cache by hash, resolve project imports to dependency symbols. |
 | `workspaces.py`, `workspace_service.py` | Workspace overlays: base commit + local patch, indexed into a private snapshot. |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
@@ -100,6 +100,8 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | POST | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `repo:sync` + repo scope |
 | GET | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/dependencies/search?q=` | `source:read` + repo scope |
+| POST | `/v1/repositories/{id}/revisions/{rev}/dependencies/resolve` | `repo:sync` + repo scope |
+| GET | `/v1/repositories/{id}/revisions/{rev}/dependencies/resolutions` | `source:read` + repo scope |
 | POST | `/v1/repositories/{id}/workspaces` | `workspace:create` + repo scope |
 | POST/GET | `/v1/workspaces/{wid}[/search]` | owner (or shared, for read) |
 | POST | `/v1/workspaces/{wid}/share` | `workspace:share`, owner |

@@ -548,6 +548,36 @@ def get_dependencies(
     return {"user": identity.user_id, "snapshot": snapshot}
 
 
+@router.post("/repositories/{repository_id}/revisions/{revision}/dependencies/resolve")
+def resolve_dependencies(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.REPO_SYNC)
+    summary = container.dependency_resolution.resolve_revision(repository_id, revision)
+    return {"user": identity.user_id, "resolution": asdict(summary)}
+
+
+@router.get("/repositories/{repository_id}/revisions/{revision}/dependencies/resolutions")
+def list_dependency_resolutions(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    sha = container.mirror.resolve(repository_id, revision)
+    with container.database.connect() as conn:
+        resolutions = container.dependency_resolution.list_resolutions(
+            conn, repository_id, sha or revision
+        )
+    return {"user": identity.user_id, "resolutions": resolutions}
+
+
 @router.get("/repositories/{repository_id}/dependencies/search")
 def search_dependencies(
     request: Request,

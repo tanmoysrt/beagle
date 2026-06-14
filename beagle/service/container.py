@@ -14,6 +14,8 @@ from beagle.service.commit_store import CommitStore
 from beagle.service.config import ServiceConfig
 from beagle.service.db import Database
 from beagle.service.decisions import DecisionStore
+from beagle.service.dependencies.artifact_cache import ArtifactCache
+from beagle.service.dependency_resolution import DependencyResolutionService
 from beagle.service.dependency_service import DependencyService
 from beagle.service.dependency_store import DependencyStore
 from beagle.service.feedback_store import FeedbackStore
@@ -60,6 +62,11 @@ class ServiceContainer:
         self.dependencies = DependencyStore()
         self.dependency_service = DependencyService(
             self.database, self.mirror, self.dependencies
+        )
+        self.artifact_cache = ArtifactCache(config)
+        self.dependency_resolution = DependencyResolutionService(
+            self.database, self.mirror, self.dependencies, self.artifact_cache,
+            self.revision_indexer,
         )
         self.workspaces = WorkspaceStore(config)
         self.workspace_service = WorkspaceService(
