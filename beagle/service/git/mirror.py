@@ -123,6 +123,33 @@ class GitMirror:
         )
         return [line for line in result.stdout.split() if line]
 
+    def merge_base(self, repository_id: str, a: str, b: str) -> str | None:
+        path = self._require(repository_id)
+        result = self._run(["merge-base", a, b], cwd=path, check=False)
+        return result.stdout.strip() or None
+
+    def diff_name_status(
+        self, repository_id: str, base: str, head: str
+    ) -> list[tuple[str, str]]:
+        path = self._require(repository_id)
+        result = self._run(["diff", "--name-status", base, head], cwd=path)
+        changes = []
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                changes.append((parts[0], parts[-1]))
+        return changes
+
+    def commits_between(
+        self, repository_id: str, base: str, head: str, limit: int = 200
+    ) -> list[str]:
+        """SHAs reachable from ``head`` but not ``base`` (newest first)."""
+        path = self._require(repository_id)
+        result = self._run(
+            ["rev-list", f"--max-count={limit}", f"{base}..{head}"], cwd=path, check=False
+        )
+        return [line for line in result.stdout.split() if line]
+
     def export_tree(self, repository_id: str, revision: str, dest: Path) -> None:
         """Materialize a commit's tree into ``dest`` (tracked files only, no .git)."""
         path = self._require(repository_id)

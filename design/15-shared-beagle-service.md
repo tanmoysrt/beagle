@@ -1710,12 +1710,12 @@ later optimization; snapshots are currently full per commit.
 
 ## Phase I — comparison and consumers
 
-- [ ] Compare revisions.
-- [ ] Summarize branch changes.
-- [ ] Summarize merges.
-- [ ] Add Claude Code MCP.
-- [ ] Add CI integration.
-- [ ] Add local-change context.
+- [x] Compare revisions. *(changed files + entity add/remove/change + commit range + authors)*
+- [x] Summarize branch changes. *(source vs target around the merge base)*
+- [x] Summarize merges. *(first parent vs merge result tree)*
+- [ ] Add Claude Code MCP. *(consumer integration — via the local bridge, Phase F)*
+- [ ] Add CI integration. *(consumer integration)*
+- [ ] Add local-change context. *(needs workspace overlays, Phase F)*
 - [ ] Add lightweight administration UI.
 
 ---

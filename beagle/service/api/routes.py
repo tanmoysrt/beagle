@@ -251,6 +251,47 @@ def search_revision(
     }
 
 
+@router.get("/repositories/{repository_id}/compare")
+def compare_revisions(
+    request: Request,
+    repository_id: str,
+    base: str,
+    head: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    result = container.revision_comparer.compare(repository_id, base, head)
+    return {"user": identity.user_id, "comparison": asdict(result)}
+
+
+@router.get("/repositories/{repository_id}/compare-branches")
+def compare_branches(
+    request: Request,
+    repository_id: str,
+    target: str,
+    source: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    result = container.revision_comparer.branch_compare(repository_id, target, source)
+    return {"user": identity.user_id, "comparison": asdict(result)}
+
+
+@router.get("/repositories/{repository_id}/merge-summary/{revision}")
+def merge_summary(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    result = container.revision_comparer.merge_summary(repository_id, revision)
+    return {"user": identity.user_id, "comparison": asdict(result)}
+
+
 @router.get("/identities")
 def list_git_identities(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)

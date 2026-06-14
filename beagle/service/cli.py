@@ -182,6 +182,19 @@ def snapshot_list(
         typer.echo(f"{snap.commit_sha[:12]}  {snap.status}  entities={snap.entity_count}")
 
 
+@app.command("compare-revisions")
+def compare_revisions(
+    repository_id: str, base: str, head: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    result = container.revision_comparer.compare(repository_id, base, head)
+    typer.echo(f"files changed: {len(result.changed_files)}")
+    typer.echo(f"entities +{len(result.entities_added)} "
+               f"-{len(result.entities_removed)} ~{len(result.entities_changed)}")
+    typer.echo(f"commits: {len(result.commits)}  authors: {', '.join(result.authors)}")
+
+
 @app.command("identity-list")
 def identity_list(
     organization_id: str,

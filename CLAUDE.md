@@ -55,6 +55,8 @@ Current scope:
   - revision indexing: materialize a commit tree (no checkout/execution) and reuse the local index
     engine into immutable per-commit snapshots; reused across branches, survive force-push;
     revision-scoped entity search
+  - revision comparison: changed files + entity add/remove/change (signature-aware) + commit range +
+    authors; branch comparison around the merge base; merge summary against the merge result tree
   - lives in `beagle/service/` (separate from the local SQLite engine); FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
@@ -67,8 +69,8 @@ Current non-goals:
 - conversation ingestion
 - long-term memory
 - web UI
-- service Phases E, F, H, I (dependency analysis, local bridge, decision/feedback memory,
-  comparison/consumers) — staged in `design/15`, not yet built
+- service Phases E, F, H (dependency analysis, local bridge, decision/feedback memory) and the
+  Phase I consumer integrations (MCP/CI/admin UI) — staged in `design/15`, not yet built
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 

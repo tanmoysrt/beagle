@@ -103,6 +103,12 @@ class CommitStore:
             (repository_id, like, like, like, like, like, like, limit),
         )
 
+    def find_one(self, conn: Connection, repository_id: str, sha: str) -> dict | None:
+        return conn.fetch_one(
+            "SELECT * FROM git_commits WHERE repository_id = ? AND sha = ?",
+            (repository_id, sha),
+        )
+
     def get_commit(self, conn: Connection, repository_id: str, sha: str) -> dict:
         row = conn.fetch_one(
             "SELECT * FROM git_commits WHERE repository_id = ? AND sha = ?",
