@@ -1,0 +1,120 @@
+"""Portable schema for the shared service.
+
+DDL is written to run unchanged on both SQLite and PostgreSQL:
+
+- every primary key is an application-generated ``TEXT`` id (no SERIAL/IDENTITY);
+- booleans are ``INTEGER`` 0/1;
+- timestamps are ISO-8601 ``TEXT`` (JWT ``iat``/``exp`` are ``INTEGER`` epochs);
+- list/object columns are JSON encoded into ``TEXT``.
+
+Migrations are an ordered list of ``(version, [statements])``. The runner applies
+any not yet recorded in ``service_schema_versions``.
+"""
+
+from __future__ import annotations
+
+_V1 = [
+    """
+    CREATE TABLE IF NOT EXISTS organizations (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        username TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        disabled INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        UNIQUE (organization_id, username)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS jwt_tokens (
+        jti TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        repositories TEXT NOT NULL,
+        permissions TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0,
+        revoked_at TEXT,
+        label TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS repositories (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        slug TEXT NOT NULL,
+        name TEXT NOT NULL,
+        remote_url TEXT,
+        default_branch TEXT NOT NULL DEFAULT 'main',
+        storage_path TEXT NOT NULL,
+        ingestion_state TEXT NOT NULL DEFAULT 'registered',
+        created_at TEXT NOT NULL,
+        UNIQUE (organization_id, slug)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS repository_access (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        permissions TEXT NOT NULL,
+        granted_at TEXT NOT NULL,
+        UNIQUE (user_id, repository_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS git_refs (
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        namespace TEXT NOT NULL,
+        ref_name TEXT NOT NULL,
+        commit_sha TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (repository_id, ref_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mcp_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        repository_id TEXT REFERENCES repositories(id),
+        client_name TEXT NOT NULL DEFAULT '',
+        client_version TEXT NOT NULL DEFAULT '',
+        privacy_mode TEXT NOT NULL DEFAULT 'summary',
+        initial_revision TEXT,
+        current_revision TEXT,
+        workspace_id TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS audit_events (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        user_id TEXT,
+        organization_id TEXT,
+        repository_id TEXT,
+        action TEXT NOT NULL,
+        request_id TEXT,
+        detail TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_events(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_repo ON audit_events(repository_id)",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user ON mcp_sessions(user_id)",
+]
+
+MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1)]
+
+LATEST_VERSION = MIGRATIONS[-1][0]
