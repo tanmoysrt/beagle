@@ -45,7 +45,7 @@ Current scope:
 - JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
 - frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
 - shared multi-tenant service: JWT identity, Git mirroring, commit metadata, identity mapping,
-  per-commit source indexing (see `design/15`, Phases A–D + G)
+  per-commit source indexing (see `design/15`, Phases A–D, G–I)
   - organizations, users, server-minted JWTs, repository-scoped permissions, MCP sessions, audit log
   - bare Git mirrors, authenticated Smart HTTP, ref namespaces with per-user push scoping
   - Tier-0 commit metadata: full messages, separate author/committer identities + timezones, parent
@@ -57,6 +57,9 @@ Current scope:
     revision-scoped entity search
   - revision comparison: changed files + entity add/remove/change (signature-aware) + commit range +
     authors; branch comparison around the merge base; merge summary against the merge result tree
+  - decision/feedback memory: change episodes, decisions with role-typed actors (confirmed vs inferred
+    attribution; never derived from commit authorship), feedback lifecycle, history by entity, redacted
+    session summaries
   - lives in `beagle/service/` (separate from the local SQLite engine); FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
@@ -69,8 +72,8 @@ Current non-goals:
 - conversation ingestion
 - long-term memory
 - web UI
-- service Phases E, F, H (dependency analysis, local bridge, decision/feedback memory) and the
-  Phase I consumer integrations (MCP/CI/admin UI) — staged in `design/15`, not yet built
+- service Phases E, F (dependency analysis, local bridge) and the Phase I consumer integrations
+  (MCP/CI/admin UI) — staged in `design/15`, not yet built
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 

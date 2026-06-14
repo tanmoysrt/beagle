@@ -1699,14 +1699,14 @@ later optimization; snapshots are currently full per commit.
 
 ## Phase H — decisions and feedback
 
-- [ ] Record session summaries.
-- [ ] Add change episodes.
-- [ ] Add DecisionActor.
-- [ ] Add explicit confirmation.
-- [ ] Link workspaces and commits.
-- [ ] Add feedback states.
-- [ ] Retrieve history by entity.
-- [ ] Label inferred attribution.
+- [x] Record session summaries. *(redacted via temporal secret scrubber; raw transcript stays local)*
+- [x] Add change episodes.
+- [x] Add DecisionActor.
+- [x] Add explicit confirmation. *(inferred by default; confirm_actor promotes to confirmed)*
+- [~] Link workspaces and commits. *(decisions link affected entities; workspace/commit links pending Phase F workspaces)*
+- [x] Add feedback states. *(received/accepted/implemented/rejected/superseded)*
+- [x] Retrieve history by entity. *(decisions and feedback queryable by entity id)*
+- [x] Label inferred attribution. *(authenticated author = confirmed proposer; mentioned others = inferred)*
 
 ## Phase I — comparison and consumers
 

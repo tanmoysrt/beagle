@@ -202,6 +202,84 @@ _V4 = [
     "CREATE INDEX IF NOT EXISTS idx_snapshots_repo ON index_snapshots(repository_id)",
 ]
 
-MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2), (3, _V3), (4, _V4)]
+_V5 = [
+    """
+    CREATE TABLE IF NOT EXISTS change_episodes (
+        id TEXT PRIMARY KEY,
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        created_by TEXT NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        episode_id TEXT NOT NULL REFERENCES change_episodes(id),
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        problem TEXT NOT NULL DEFAULT '',
+        goal TEXT NOT NULL DEFAULT '',
+        decision TEXT NOT NULL,
+        rationale TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        created_by TEXT NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS decision_actors (
+        id TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL REFERENCES decisions(id),
+        user_id TEXT REFERENCES users(id),
+        external_name TEXT,
+        role TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        evidence TEXT NOT NULL DEFAULT '',
+        confirmation_state TEXT NOT NULL DEFAULT 'inferred'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS decision_entities (
+        decision_id TEXT NOT NULL REFERENCES decisions(id),
+        repository_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        PRIMARY KEY (decision_id, entity_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS feedback (
+        id TEXT PRIMARY KEY,
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        episode_id TEXT REFERENCES change_episodes(id),
+        comment TEXT NOT NULL,
+        author_user_id TEXT NOT NULL REFERENCES users(id),
+        revision TEXT,
+        entity_id TEXT,
+        status TEXT NOT NULL DEFAULT 'received',
+        rationale TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS session_summaries (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES mcp_sessions(id),
+        problem TEXT NOT NULL DEFAULT '',
+        decision TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_decisions_repo ON decisions(repository_id)",
+    "CREATE INDEX IF NOT EXISTS idx_decision_entities_entity ON decision_entities(repository_id, entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_feedback_repo ON feedback(repository_id)",
+    "CREATE INDEX IF NOT EXISTS idx_actors_decision ON decision_actors(decision_id)",
+]
+
+MIGRATIONS: list[tuple[int, list[str]]] = [
+    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5)
+]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

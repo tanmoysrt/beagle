@@ -13,6 +13,8 @@ from beagle.service.commit_indexer import CommitIndexer
 from beagle.service.commit_store import CommitStore
 from beagle.service.config import ServiceConfig
 from beagle.service.db import Database
+from beagle.service.decisions import DecisionStore
+from beagle.service.feedback_store import FeedbackStore
 from beagle.service.git.commit_reader import CommitReader
 from beagle.service.git.mirror import GitMirror
 from beagle.service.git.smart_http import SmartHttpHandler
@@ -36,6 +38,8 @@ class ServiceContainer:
         self.identity = IdentityStore()
         self.repositories = RepositoryStore()
         self.sessions = SessionStore()
+        self.decisions = DecisionStore()
+        self.feedback = FeedbackStore()
         self.audit = AuditLog()
         self.jwt = JwtService(config, self.identity)
         self.mirror = GitMirror(config)

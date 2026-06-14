@@ -134,6 +134,65 @@ class IndexSnapshot:
 
 
 @dataclass
+class ChangeEpisode:
+    id: str
+    repository_id: str
+    title: str
+    summary: str
+    status: str
+    created_by: str
+    created_at: str
+
+
+@dataclass
+class Decision:
+    id: str
+    episode_id: str
+    repository_id: str
+    problem: str
+    goal: str
+    decision: str
+    rationale: str
+    status: str
+    created_by: str
+    created_at: str
+
+
+@dataclass
+class DecisionActor:
+    """A participant in a decision and the role they played.
+
+    ``confirmation_state`` distinguishes inferred attribution from confirmed:
+    the authenticated speaker is confirmed; mentioned others stay inferred until
+    explicitly confirmed (design/15 §16). Decision roles are never derived from
+    Git commit authorship.
+    """
+
+    id: str
+    decision_id: str
+    user_id: str | None
+    external_name: str | None
+    role: str
+    confidence: float
+    evidence: str
+    confirmation_state: str
+
+
+@dataclass
+class Feedback:
+    id: str
+    repository_id: str
+    episode_id: str | None
+    comment: str
+    author_user_id: str
+    revision: str | None
+    entity_id: str | None
+    status: str
+    rationale: str
+    created_at: str
+
+
+@dataclass
 class AuditEvent:
     id: str
     timestamp: str

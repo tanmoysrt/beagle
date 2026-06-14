@@ -176,6 +176,55 @@ def test_revision_index_and_search_api(client, app, user_id, tmp_path):
     assert any(r["name"] == "widget" for r in found["results"])
 
 
+def test_decision_and_feedback_api(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.DECISION_WRITE,
+         permissions.DECISION_READ, permissions.FEEDBACK_WRITE, permissions.FEEDBACK_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories", json={"slug": "press", "name": "Press"}, headers=_auth(token)
+    ).json()["repository"]["id"]
+
+    episode = client.post(
+        f"/v1/repositories/{repo_id}/episodes",
+        json={"title": "JWT rework"}, headers=_auth(token),
+    ).json()["episode"]
+    decision = client.post(
+        f"/v1/episodes/{episode['id']}/decisions",
+        json={"decision": "Use server-minted JWT", "rationale": "simple"}, headers=_auth(token),
+    ).json()["decision"]
+
+    # Author auto-attached as confirmed proposer.
+    history = client.get(
+        f"/v1/repositories/{repo_id}/decisions", headers=_auth(token)
+    ).json()["decisions"]
+    assert history[0]["actors"][0]["role"] == "proposer"
+    assert history[0]["actors"][0]["confirmation_state"] == "confirmed"
+
+    fb = client.post(
+        f"/v1/repositories/{repo_id}/feedback",
+        json={"comment": "tighten scope", "entity_id": "e1"}, headers=_auth(token),
+    ).json()["feedback"]
+    client.post(f"/v1/feedback/{fb['id']}/status", json={"status": "accepted"}, headers=_auth(token))
+    listed = client.get(
+        f"/v1/repositories/{repo_id}/feedback", headers=_auth(token)
+    ).json()["feedback"]
+    assert listed[0]["status"] == "accepted"
+
+
+def test_decision_write_requires_permission(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.REPO_REGISTER])
+    repo_id = client.post(
+        "/v1/repositories", json={"slug": "press", "name": "Press"}, headers=_auth(token)
+    ).json()["repository"]["id"]
+    response = client.post(
+        f"/v1/repositories/{repo_id}/episodes", json={"title": "x"}, headers=_auth(token)
+    )
+    assert response.status_code == 403
+
+
 def test_identity_endpoints(client, app, user_id, tmp_path):
     _make_upstream(tmp_path / "upstream")
     token = _mint(

@@ -44,6 +44,45 @@ class ClaimIdentityRequest(BaseModel):
     email: str
 
 
+class EpisodeRequest(BaseModel):
+    title: str
+    summary: str = ""
+
+
+class DecisionRequest(BaseModel):
+    decision: str
+    problem: str = ""
+    goal: str = ""
+    rationale: str = ""
+
+
+class ActorRequest(BaseModel):
+    role: str
+    user_id: str | None = None
+    external_name: str | None = None
+    confidence: float = 1.0
+    evidence: str = ""
+    confirmation_state: str = "inferred"
+
+
+class FeedbackRequest(BaseModel):
+    comment: str
+    episode_id: str | None = None
+    revision: str | None = None
+    entity_id: str | None = None
+    rationale: str = ""
+
+
+class StatusRequest(BaseModel):
+    status: str
+
+
+class SummaryRequest(BaseModel):
+    summary: str
+    problem: str = ""
+    decision: str = ""
+
+
 @router.get("/me")
 def current_user(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
@@ -181,6 +220,10 @@ def _authorize_repo(container, identity, repository_id, permission):
     return repo
 
 
+def _repo_slug(container, conn, repository_id):
+    return container.repositories.get(conn, repository_id).slug
+
+
 @router.post("/repositories/{repository_id}/revisions/{revision}/index")
 def index_revision(
     request: Request,
@@ -290,6 +333,152 @@ def merge_summary(
     _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
     result = container.revision_comparer.merge_summary(repository_id, revision)
     return {"user": identity.user_id, "comparison": asdict(result)}
+
+
+@router.post("/repositories/{repository_id}/episodes")
+def create_episode(
+    request: Request,
+    repository_id: str,
+    body: EpisodeRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.DECISION_WRITE)
+    with container.database.connect() as conn:
+        episode = container.decisions.create_episode(
+            conn, repository_id, body.title, body.summary, identity.user_id
+        )
+    return {"user": identity.user_id, "episode": asdict(episode)}
+
+
+@router.post("/episodes/{episode_id}/decisions")
+def record_decision(
+    request: Request,
+    episode_id: str,
+    body: DecisionRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.DECISION_WRITE)
+    with container.database.connect() as conn:
+        episode = container.decisions.get_episode(conn, episode_id)
+        permissions.require_repository(
+            identity.repositories, _repo_slug(container, conn, episode.repository_id)
+        )
+        decision = container.decisions.record_decision(
+            conn, episode_id, episode.repository_id, body.decision, identity.user_id,
+            body.problem, body.goal, body.rationale,
+        )
+    return {"user": identity.user_id, "decision": asdict(decision)}
+
+
+@router.post("/decisions/{decision_id}/actors")
+def add_decision_actor(
+    request: Request,
+    decision_id: str,
+    body: ActorRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.DECISION_WRITE)
+    with container.database.connect() as conn:
+        actor = container.decisions.add_actor(
+            conn, decision_id, body.role, body.user_id, body.external_name,
+            body.confidence, body.evidence, body.confirmation_state,
+        )
+    return {"user": identity.user_id, "actor": asdict(actor)}
+
+
+@router.post("/decisions/{decision_id}/actors/{actor_id}/confirm")
+def confirm_decision_actor(
+    request: Request,
+    decision_id: str,
+    actor_id: str,
+    body: StatusRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.DECISION_WRITE)
+    with container.database.connect() as conn:
+        container.decisions.confirm_actor(conn, actor_id, body.status)
+    return {"user": identity.user_id, "actor_id": actor_id, "confirmation_state": body.status}
+
+
+@router.get("/repositories/{repository_id}/decisions")
+def decision_history(
+    request: Request,
+    repository_id: str,
+    entity: str | None = None,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.DECISION_READ)
+    with container.database.connect() as conn:
+        decisions = container.decisions.list_decisions(conn, repository_id, entity)
+    return {"user": identity.user_id, "decisions": decisions}
+
+
+@router.post("/repositories/{repository_id}/feedback")
+def record_feedback(
+    request: Request,
+    repository_id: str,
+    body: FeedbackRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.FEEDBACK_WRITE)
+    with container.database.connect() as conn:
+        item = container.feedback.record(
+            conn, repository_id, body.comment, identity.user_id, body.episode_id,
+            body.revision, body.entity_id, body.rationale,
+        )
+    return {"user": identity.user_id, "feedback": asdict(item)}
+
+
+@router.post("/feedback/{feedback_id}/status")
+def set_feedback_status(
+    request: Request,
+    feedback_id: str,
+    body: StatusRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    permissions.require_permission(identity.permissions, permissions.FEEDBACK_WRITE)
+    with container.database.connect() as conn:
+        container.feedback.set_status(conn, feedback_id, body.status)
+    return {"user": identity.user_id, "feedback_id": feedback_id, "status": body.status}
+
+
+@router.get("/repositories/{repository_id}/feedback")
+def feedback_history(
+    request: Request,
+    repository_id: str,
+    entity: str | None = None,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.FEEDBACK_READ)
+    with container.database.connect() as conn:
+        items = container.feedback.history(conn, repository_id, entity)
+    return {"user": identity.user_id, "feedback": [asdict(i) for i in items]}
+
+
+@router.post("/sessions/{session_id}/summary")
+def store_session_summary(
+    request: Request,
+    session_id: str,
+    body: SummaryRequest,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    with container.database.connect() as conn:
+        session = container.sessions.get_session(conn, session_id)
+        if session.user_id != identity.user_id:
+            permissions.require_permission(identity.permissions, permissions.ADMIN_IDENTITY)
+        summary_id = container.sessions.store_summary(
+            conn, session_id, body.summary, body.problem, body.decision
+        )
+    return {"user": identity.user_id, "summary_id": summary_id}
 
 
 @router.get("/identities")

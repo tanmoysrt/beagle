@@ -12,6 +12,7 @@ from beagle.service.clock import now_iso
 from beagle.service.db import Connection
 from beagle.service.errors import NotFound
 from beagle.service.models import McpSession
+from beagle.temporal.redact import redact
 
 
 class SessionStore:
@@ -84,4 +85,25 @@ class SessionStore:
         conn.execute(
             "UPDATE mcp_sessions SET ended_at = ? WHERE id = ?",
             (now_iso(), session_id),
+        )
+
+    def store_summary(
+        self, conn: Connection, session_id: str, summary: str,
+        problem: str = "", decision: str = "",
+    ) -> str:
+        """Store a redacted session summary; the raw transcript stays local (§17)."""
+        self.get_session(conn, session_id)
+        summary_id = ids._new("sum")
+        conn.execute(
+            "INSERT INTO session_summaries(id, session_id, problem, decision, summary,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (summary_id, session_id, redact(problem), redact(decision),
+             redact(summary), now_iso()),
+        )
+        return summary_id
+
+    def get_summaries(self, conn: Connection, session_id: str) -> list[dict]:
+        return conn.fetch_all(
+            "SELECT * FROM session_summaries WHERE session_id = ? ORDER BY created_at",
+            (session_id,),
         )

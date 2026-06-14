@@ -182,6 +182,62 @@ def snapshot_list(
         typer.echo(f"{snap.commit_sha[:12]}  {snap.status}  entities={snap.entity_count}")
 
 
+@app.command("episode-create")
+def episode_create(
+    repository_id: str, title: str, created_by: str,
+    summary: str = typer.Option("", "--summary"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        episode = container.decisions.create_episode(conn, repository_id, title, summary, created_by)
+    typer.echo(episode.id)
+
+
+@app.command("decision-record")
+def decision_record(
+    episode_id: str, repository_id: str, decision: str, created_by: str,
+    problem: str = typer.Option("", "--problem"),
+    rationale: str = typer.Option("", "--rationale"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        rec = container.decisions.record_decision(
+            conn, episode_id, repository_id, decision, created_by, problem, "", rationale
+        )
+    typer.echo(rec.id)
+
+
+@app.command("decision-history")
+def decision_history(
+    repository_id: str,
+    entity: str = typer.Option(None, "--entity"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        decisions = container.decisions.list_decisions(conn, repository_id, entity)
+    for dec in decisions:
+        roles = ", ".join(f"{a['role']}:{a['confirmation_state']}" for a in dec["actors"])
+        typer.echo(f"{dec['id'][:12]}  [{dec['status']}]  {dec['decision']}  ({roles})")
+
+
+@app.command("feedback-record")
+def feedback_record(
+    repository_id: str, comment: str, author_user_id: str,
+    entity: str = typer.Option(None, "--entity"),
+    revision: str = typer.Option(None, "--revision"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        item = container.feedback.record(
+            conn, repository_id, comment, author_user_id, None, revision, entity
+        )
+    typer.echo(item.id)
+
+
 @app.command("compare-revisions")
 def compare_revisions(
     repository_id: str, base: str, head: str,
