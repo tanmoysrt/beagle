@@ -11,12 +11,20 @@ dependencies = [
     "mcp>=1.0",
     "tree-sitter>=0.25.2",
     "tree-sitter-language-pack>=1.8.1",
+    "pyjwt>=2.8",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "psycopg[binary]>=3.1",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
 beagle = "beagle.cli:app"
 beagle-mcp = "beagle.mcp.server:main"
 beagle-bench = "beagle.benchmarks.report:main"
+beagle-service = "beagle.service.cli:app"
+beagle-bridge = "beagle.bridge.cli:app"
+beagle-service-mcp = "beagle.bridge.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]

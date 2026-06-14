@@ -1,0 +1,335 @@
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from beagle.service.api.app import create_app
+from beagle.service import permissions
+
+
+def _make_upstream(path: Path) -> None:
+    path.mkdir(parents=True)
+    env = {**os.environ, "GIT_AUTHOR_NAME": "U", "GIT_AUTHOR_EMAIL": "u@e.com",
+           "GIT_COMMITTER_NAME": "U", "GIT_COMMITTER_EMAIL": "u@e.com"}
+    run = lambda *a: subprocess.run(["git", *a], cwd=path, env=env, check=True,
+                                    capture_output=True, text=True)
+    run("init", "--quiet", "-b", "main")
+    (path / "f.txt").write_text("x\n")
+    run("add", "f.txt")
+    run("commit", "--quiet", "-m", "c1")
+
+
+@pytest.fixture
+def app(config):
+    return create_app(config)
+
+
+@pytest.fixture
+def client(app):
+    return TestClient(app)
+
+
+@pytest.fixture
+def user_id(app):
+    container = app.state.container
+    with container.database.connect() as conn:
+        org = container.identity.create_organization(conn, "frappe", "Frappe")
+        user = container.identity.create_user(conn, org.id, "tanmoy", "T", "t@e.com")
+    return user.id
+
+
+def _mint(app, user_id, repos, perms, ttl=3600):
+    container = app.state.container
+    with container.database.connect() as conn:
+        token, _ = container.jwt.mint(conn, user_id, repos, perms, ttl)
+    return token
+
+
+def _auth(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_healthz(client):
+    assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_unauthenticated_write_rejected(client):
+    response = client.post("/v1/repositories", json={"slug": "press", "name": "Press"})
+    assert response.status_code == 401
+
+
+def test_me_returns_identity(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
+    response = client.get("/v1/me", headers=_auth(token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["username"] == "tanmoy"
+    assert body["repositories"] == ["press"]
+
+
+def test_register_requires_permission(client, app, user_id):
+    token = _mint(app, user_id, [], [permissions.SOURCE_READ])
+    response = client.post(
+        "/v1/repositories", json={"slug": "press", "name": "Press"}, headers=_auth(token)
+    )
+    assert response.status_code == 403
+
+
+def test_register_and_sync(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC],
+    )
+    registered = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    )
+    assert registered.status_code == 200
+    repo_id = registered.json()["repository"]["id"]
+
+    synced = client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+    assert synced.status_code == 200
+    assert synced.json()["index_status"]["ref_count"] >= 1
+
+    # Audit trail recorded both actions.
+    with app.state.container.database.connect() as conn:
+        events = app.state.container.audit.list_for_user(conn, user_id)
+    assert {"repo.register", "repo.sync"} <= {e.action for e in events}
+
+
+def test_commit_history_and_search_api(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    synced = client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token)).json()
+    assert synced["index_status"]["commit_count"] == 1
+
+    history = client.get(f"/v1/repositories/{repo_id}/commits", headers=_auth(token)).json()
+    assert len(history["commits"]) == 1
+    assert history["commits"][0]["subject"] == "c1"
+
+    found = client.get(
+        f"/v1/repositories/{repo_id}/commits/search", params={"q": "c1"}, headers=_auth(token)
+    ).json()
+    assert len(found["commits"]) == 1
+
+
+def test_commit_history_requires_repo_scope(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    admin = _mint(app, user_id, ["press"], [permissions.REPO_REGISTER, permissions.REPO_SYNC])
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(admin),
+    ).json()["repository"]["id"]
+    # A token scoped to a different repo must not read this repo's history.
+    other = _mint(app, user_id, ["frappe"], [permissions.SOURCE_READ])
+    response = client.get(f"/v1/repositories/{repo_id}/commits", headers=_auth(other))
+    assert response.status_code == 403
+
+
+def test_revision_index_and_search_api(client, app, user_id, tmp_path):
+    upstream = tmp_path / "upstream"
+    _make_upstream(upstream)
+    (upstream / "mod.py").write_text("def widget():\n    return 1\n")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "U", "GIT_AUTHOR_EMAIL": "u@e.com",
+           "GIT_COMMITTER_NAME": "U", "GIT_COMMITTER_EMAIL": "u@e.com"}
+    subprocess.run(["git", "add", "mod.py"], cwd=upstream, env=env, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "add mod"], cwd=upstream, env=env, check=True,
+                   capture_output=True)
+
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(upstream)},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+    sha = app.state.container.mirror.resolve(repo_id, "refs/beagle/upstream/heads/main")
+
+    indexed = client.post(
+        f"/v1/repositories/{repo_id}/revisions/{sha}/index", headers=_auth(token)
+    ).json()
+    assert indexed["snapshot"]["status"] == "ready"
+
+    found = client.get(
+        f"/v1/repositories/{repo_id}/revisions/{sha}/search",
+        params={"q": "widget"}, headers=_auth(token),
+    ).json()
+    assert found["revision"] == sha
+    assert any(r["name"] == "widget" for r in found["results"])
+
+
+def test_decision_and_feedback_api(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.DECISION_WRITE,
+         permissions.DECISION_READ, permissions.FEEDBACK_WRITE, permissions.FEEDBACK_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories", json={"slug": "press", "name": "Press"}, headers=_auth(token)
+    ).json()["repository"]["id"]
+
+    episode = client.post(
+        f"/v1/repositories/{repo_id}/episodes",
+        json={"title": "JWT rework"}, headers=_auth(token),
+    ).json()["episode"]
+    decision = client.post(
+        f"/v1/episodes/{episode['id']}/decisions",
+        json={"decision": "Use server-minted JWT", "rationale": "simple"}, headers=_auth(token),
+    ).json()["decision"]
+
+    # Author auto-attached as confirmed proposer.
+    history = client.get(
+        f"/v1/repositories/{repo_id}/decisions", headers=_auth(token)
+    ).json()["decisions"]
+    assert history[0]["actors"][0]["role"] == "proposer"
+    assert history[0]["actors"][0]["confirmation_state"] == "confirmed"
+
+    fb = client.post(
+        f"/v1/repositories/{repo_id}/feedback",
+        json={"comment": "tighten scope", "entity_id": "e1"}, headers=_auth(token),
+    ).json()["feedback"]
+    client.post(f"/v1/feedback/{fb['id']}/status", json={"status": "accepted"}, headers=_auth(token))
+    listed = client.get(
+        f"/v1/repositories/{repo_id}/feedback", headers=_auth(token)
+    ).json()["feedback"]
+    assert listed[0]["status"] == "accepted"
+
+
+def test_decision_write_requires_permission(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.REPO_REGISTER])
+    repo_id = client.post(
+        "/v1/repositories", json={"slug": "press", "name": "Press"}, headers=_auth(token)
+    ).json()["repository"]["id"]
+    response = client.post(
+        f"/v1/repositories/{repo_id}/episodes", json={"title": "x"}, headers=_auth(token)
+    )
+    assert response.status_code == 403
+
+
+def test_workspace_api_lifecycle(client, app, user_id, tmp_path):
+    upstream = tmp_path / "upstream"
+    _make_upstream(upstream)
+    (upstream / "m.py").write_text("def base():\n    return 1\n")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "U", "GIT_AUTHOR_EMAIL": "u@e.com",
+           "GIT_COMMITTER_NAME": "U", "GIT_COMMITTER_EMAIL": "u@e.com"}
+    subprocess.run(["git", "add", "m.py"], cwd=upstream, env=env, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "m"], cwd=upstream, env=env, check=True, capture_output=True)
+
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ,
+         permissions.WORKSPACE_CREATE],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(upstream)},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+    base = app.state.container.mirror.resolve(repo_id, "refs/beagle/upstream/heads/main")
+
+    patch = (
+        "diff --git a/m.py b/m.py\n--- a/m.py\n+++ b/m.py\n"
+        "@@ -1,2 +1,5 @@\n def base():\n     return 1\n+\n+def wip():\n+    return 2\n"
+    )
+    created = client.post(
+        f"/v1/repositories/{repo_id}/workspaces",
+        json={"base_commit": base, "patch": patch}, headers=_auth(token),
+    )
+    assert created.status_code == 200
+    ws_id = created.json()["workspace"]["id"]
+
+    found = client.get(
+        f"/v1/workspaces/{ws_id}/search", params={"q": "wip"}, headers=_auth(token)
+    ).json()
+    assert any(r["name"] == "wip" for r in found["results"])
+
+    deleted = client.delete(f"/v1/workspaces/{ws_id}", headers=_auth(token))
+    assert deleted.json()["deleted"] is True
+
+
+def test_identity_endpoints(client, app, user_id, tmp_path):
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.ADMIN_IDENTITY],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+
+    listed = client.get("/v1/identities", headers=_auth(token)).json()
+    assert any(i["email"] == "u@e.com" for i in listed["identities"])
+
+    # Map the historical author email to the authenticated user, then verify /me/identities.
+    client.post(
+        "/v1/identities/map",
+        json={"email": "u@e.com", "user_id": user_id, "method": "admin"},
+        headers=_auth(token),
+    )
+    mine = client.get("/v1/me/identities", headers=_auth(token)).json()
+    assert [i["email"] for i in mine["identities"]] == ["u@e.com"]
+
+
+def test_identity_list_requires_admin(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
+    assert client.get("/v1/identities", headers=_auth(token)).status_code == 403
+
+
+def test_session_open_and_end(client, app, user_id):
+    token = _mint(app, user_id, ["press"], [permissions.SOURCE_READ])
+    opened = client.post("/v1/sessions", json={"client_name": "claude-code"}, headers=_auth(token))
+    assert opened.status_code == 200
+    session_id = opened.json()["session"]["id"]
+    ended = client.post(f"/v1/sessions/{session_id}/end", headers=_auth(token))
+    assert ended.json()["ended"] is True
+
+
+def test_git_info_refs_through_handler(client, app, user_id, tmp_path):
+    """The Smart-HTTP handler proxies a real git-upload-pack advertisement."""
+    _make_upstream(tmp_path / "upstream")
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(tmp_path / "upstream")},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+
+    handler = app.state.container.smart_http
+    response = handler.handle(
+        "GET", repo_id, "info/refs", "service=git-upload-pack",
+        {"authorization": f"Bearer {token}"}, b"",
+    )
+    assert response.status_code == 200
+    assert b"git-upload-pack" in response.body
+
+    denied = handler.handle(
+        "GET", repo_id, "info/refs", "service=git-upload-pack", {}, b""
+    )
+    assert denied.status_code == 401

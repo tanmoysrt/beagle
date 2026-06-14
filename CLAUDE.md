@@ -44,18 +44,41 @@ Current scope:
 - read-only MCP server for Claude Code
 - JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
 - frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
+- shared multi-tenant service + local bridge: JWT identity, Git mirroring, commit metadata, identity
+  mapping, per-commit source indexing, dependency resolution, decisions/feedback, comparison, workspace
+  overlays, service MCP/CI/admin UI (see `design/15`, Phases A–I complete; JS cross-package symbol edges pending)
+  - organizations, users, server-minted JWTs, repository-scoped permissions, MCP sessions, audit log
+  - bare Git mirrors, authenticated Smart HTTP, ref namespaces with per-user push scoping
+  - Tier-0 commit metadata: full messages, separate author/committer identities + timezones, parent
+    graph, trailers, signature status, diff stats, and message search
+  - Git identities anchored on email (never name similarity): harvested from authors/committers/
+    co-author trailers, mapped to users by verified email / admin / explicit claim; unclaimed by default
+  - revision indexing: materialize a commit tree (no checkout/execution) and reuse the local index
+    engine into immutable per-commit snapshots; reused across branches, survive force-push;
+    revision-scoped entity search
+  - revision comparison: changed files + entity add/remove/change (signature-aware) + commit range +
+    authors; branch comparison around the merge base; merge summary against the merge result tree
+  - decision/feedback memory: change episodes, decisions with role-typed actors (confirmed vs inferred
+    attribution; never derived from commit authorship), feedback lifecycle, history by entity, redacted
+    session summaries
+  - dependency analysis: parse Python/JS manifests+lockfiles into pinned snapshots, registry download
+    (PyPI/npm) with hash verification + archive-safe unpack (no scripts run), index downloaded source
+    cached by hash, Python cross-package import/symbol resolution with provenance (JS symbol edges pending)
+  - workspace overlays (base commit + local dirty patch, indexed privately); ownership + explicit sharing
+  - consumers: read-only service MCP for Claude Code, CI comparison report, lightweight read-only admin UI
+  - lives in `beagle/service/` + local bridge in `beagle/bridge/`; FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
 
 - JS-internal call-graph and import resolution (facts stored, edges staged — see `design/14`)
+- JS cross-package symbol edges (JS dependency source is downloaded + indexed; edges staged — see `design/15` §13)
 - PR review
 - GitHub integration
 - embeddings
 - vector databases
 - conversation ingestion
 - long-term memory
-- web UI
-- hosted multi-repository service
+- general web UI beyond the read-only admin overview page (`design/15` §21)
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 

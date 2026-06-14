@@ -71,6 +71,22 @@ changed → `history`; record the reasoning behind a change → `episode`.
 Tools return stable ids — feed them into the next call. Read only the returned
 ranges; fall back to Grep/Glob when coverage is thin.
 
+## Shared service (teams)
+
+Beyond the local engine, beagle ships a revision-aware **shared service**: Git
+mirroring, per-commit indexing, dependency resolution, decision/feedback memory,
+and JWT auth — with a local bridge and a read-only MCP for Claude Code. Run it
+with Docker:
+
+```bash
+export BEAGLE_SERVICE_SECRET=$(openssl rand -hex 32)
+docker compose up --build          # API on http://localhost:8000
+```
+
+See **[docs/guide/shared-service.md](docs/guide/shared-service.md)** for setup,
+the bridge, MCP, CI, and the admin UI, and `beagle/service/README.md` for the
+module map and full API reference.
+
 ---
 
 See `design/` for architecture, `CLAUDE.md` for development rules.
