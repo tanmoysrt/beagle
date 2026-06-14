@@ -1626,7 +1626,7 @@ who shared a workspace
 - [x] Mint signed JWTs.
 - [x] Add expiry and revocation.
 - [x] Add repository permissions.
-- [ ] Store JWT securely in local bridge. *(deferred to Phase F — local bridge)*
+- [x] Store JWT securely in local bridge. *(bridge TokenStore: env → 0600 file → optional keyring; never in repo)*
 - [x] Create MCP session records.
 - [x] Add request audit context.
 - [x] Reject unauthenticated writes.
