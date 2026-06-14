@@ -21,7 +21,9 @@ from beagle.service.identity import IdentityStore
 from beagle.service.jwt_service import JwtService
 from beagle.service.repositories import RepositoryStore
 from beagle.service.repository_service import RepositoryService
+from beagle.service.revision_indexer import RevisionIndexer
 from beagle.service.sessions import SessionStore
+from beagle.service.snapshot_store import SnapshotStore
 
 
 class ServiceContainer:
@@ -39,6 +41,10 @@ class ServiceContainer:
         self.commits = CommitStore()
         self.commit_indexer = CommitIndexer(CommitReader(config), self.commits, self.mirror)
         self.git_identities = GitIdentityStore()
+        self.snapshots = SnapshotStore()
+        self.revision_indexer = RevisionIndexer(
+            config, self.database, self.mirror, self.snapshots
+        )
         self.repository_service = RepositoryService(
             self.repositories, self.mirror, self.commit_indexer, self.git_identities
         )

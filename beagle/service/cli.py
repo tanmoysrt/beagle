@@ -155,6 +155,33 @@ def token_revoke(
     typer.echo("revoked")
 
 
+@app.command("index-revision")
+def index_revision(
+    repository_id: str, revision: str,
+    history: int = typer.Option(0, "--history", help="also index N ancestors, parent-first"),
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    if history:
+        snapshots = container.revision_indexer.index_history(repository_id, revision, history)
+        typer.echo(f"indexed/reused {len(snapshots)} snapshots")
+        return
+    snapshot = container.revision_indexer.index_revision(repository_id, revision)
+    typer.echo(f"{snapshot.commit_sha[:12]}  {snapshot.status}  entities={snapshot.entity_count}")
+
+
+@app.command("snapshot-list")
+def snapshot_list(
+    repository_id: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    with container.database.connect() as conn:
+        snapshots = container.snapshots.list_for_repository(conn, repository_id)
+    for snap in snapshots:
+        typer.echo(f"{snap.commit_sha[:12]}  {snap.status}  entities={snap.entity_count}")
+
+
 @app.command("identity-list")
 def identity_list(
     organization_id: str,

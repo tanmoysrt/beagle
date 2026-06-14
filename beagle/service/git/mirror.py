@@ -8,7 +8,9 @@ metadata. Upstream history is fetched into the canonical Beagle namespace; a
 
 from __future__ import annotations
 
+import io
 import subprocess
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,6 +104,34 @@ class GitMirror:
         result = self._run(["cat-file", "-e", f"{sha}^{{commit}}"], cwd=path, check=False)
         return result.returncode == 0
 
+    def tree_sha(self, repository_id: str, revision: str) -> str | None:
+        path = self._require(repository_id)
+        result = self._run(
+            ["rev-parse", "--verify", "--quiet", f"{revision}^{{tree}}"],
+            cwd=path,
+            check=False,
+        )
+        return result.stdout.strip() or None
+
+    def rev_list(self, repository_id: str, revision: str, limit: int) -> list[str]:
+        """Return commit SHAs reachable from ``revision``, parent-first."""
+        path = self._require(repository_id)
+        result = self._run(
+            ["rev-list", "--reverse", "--topo-order", f"--max-count={limit}", revision],
+            cwd=path,
+            check=False,
+        )
+        return [line for line in result.stdout.split() if line]
+
+    def export_tree(self, repository_id: str, revision: str, dest: Path) -> None:
+        """Materialize a commit's tree into ``dest`` (tracked files only, no .git)."""
+        path = self._require(repository_id)
+        archive = self._run_bytes(["archive", "--format=tar", revision], cwd=path)
+        dest.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            members = [m for m in tar.getmembers() if _is_safe_member(m, dest)]
+            tar.extractall(dest, members=members)
+
     def verify_integrity(self, repository_id: str) -> None:
         """Run ``git fsck``; raise :class:`ServiceError` on corruption."""
         path = self._require(repository_id)
@@ -137,3 +167,17 @@ class GitMirror:
                 f"git {' '.join(args)} failed: {result.stderr.strip()}"
             )
         return result
+
+    def _run_bytes(self, args: list[str], cwd: Path) -> bytes:
+        result = subprocess.run([self._git, *args], cwd=str(cwd), capture_output=True)
+        if result.returncode != 0:
+            raise ServiceError(f"git {' '.join(args)} failed: {result.stderr.decode().strip()}")
+        return result.stdout
+
+
+def _is_safe_member(member: tarfile.TarInfo, dest: Path) -> bool:
+    """Reject path traversal and unsafe symlinks in an exported tree."""
+    if member.issym() or member.islnk():
+        return False
+    target = (dest / member.name).resolve()
+    return dest.resolve() in target.parents or target == dest.resolve()

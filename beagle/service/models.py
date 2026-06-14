@@ -111,6 +111,29 @@ class McpSession:
 
 
 @dataclass
+class IndexSnapshot:
+    """An immutable per-commit index, keyed by repository + commit (design/15 §8).
+
+    The artifact is a self-contained index of the commit's materialized tree.
+    Snapshots are reused across branches that share the commit, and survive a
+    force-push because they are keyed by commit, never by branch.
+    """
+
+    id: str
+    repository_id: str
+    commit_sha: str
+    tree_sha: str
+    indexer_version: str
+    status: str
+    file_count: int | None
+    entity_count: int | None
+    observation_count: int | None
+    edge_count: int | None
+    artifact_path: str
+    created_at: str
+
+
+@dataclass
 class AuditEvent:
     id: str
     timestamp: str

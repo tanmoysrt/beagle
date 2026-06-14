@@ -172,6 +172,85 @@ def commit_detail(
     return {"user": identity.user_id, "commit": commit}
 
 
+def _authorize_repo(container, identity, repository_id, permission):
+    """Return the repository after checking scope + permission; raises on failure."""
+    with container.database.connect() as conn:
+        repo = container.repositories.get(conn, repository_id)
+    permissions.require_repository(identity.repositories, repo.slug)
+    permissions.require_permission(identity.permissions, permission)
+    return repo
+
+
+@router.post("/repositories/{repository_id}/revisions/{revision}/index")
+def index_revision(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.REPO_SYNC)
+    snapshot = container.revision_indexer.index_revision(repository_id, revision)
+    with container.database.connect() as conn:
+        container.audit.record(
+            conn, "revision.index", identity.user_id, identity.organization_id,
+            repository_id, request_id(request), {"commit": snapshot.commit_sha},
+        )
+    return {"user": identity.user_id, "snapshot": asdict(snapshot)}
+
+
+@router.get("/repositories/{repository_id}/snapshots")
+def list_snapshots(
+    request: Request,
+    repository_id: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    with container.database.connect() as conn:
+        snapshots = container.snapshots.list_for_repository(conn, repository_id)
+    return {"user": identity.user_id, "snapshots": [asdict(s) for s in snapshots]}
+
+
+@router.get("/repositories/{repository_id}/revisions/{revision}")
+def revision_snapshot(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    sha = container.mirror.resolve(repository_id, revision)
+    with container.database.connect() as conn:
+        snapshot = container.snapshots.get(conn, repository_id, sha or revision)
+    return {"user": identity.user_id, "snapshot": asdict(snapshot)}
+
+
+@router.get("/repositories/{repository_id}/revisions/{revision}/search")
+def search_revision(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    q: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    from beagle.service.revision_indexer import search_snapshot_entities
+
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    sha = container.mirror.resolve(repository_id, revision)
+    with container.database.connect() as conn:
+        snapshot = container.snapshots.get(conn, repository_id, sha or revision)
+    results = search_snapshot_entities(snapshot.artifact_path, q, limit=20)
+    return {
+        "user": identity.user_id,
+        "repository": repository_id,
+        "revision": snapshot.commit_sha,
+        "results": results,
+    }
+
+
 @router.get("/identities")
 def list_git_identities(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)

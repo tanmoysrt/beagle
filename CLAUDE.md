@@ -44,14 +44,17 @@ Current scope:
 - read-only MCP server for Claude Code
 - JavaScript, TypeScript, and Vue structural extraction (entities, imports, `extends`)
 - frontend → backend resolution: JS/Vue call sites to backend methods and DocTypes (see `design/14`)
-- shared multi-tenant service: JWT identity, Git mirroring, commit metadata, identity mapping
-  (see `design/15`, Phases A–C + G)
+- shared multi-tenant service: JWT identity, Git mirroring, commit metadata, identity mapping,
+  per-commit source indexing (see `design/15`, Phases A–D + G)
   - organizations, users, server-minted JWTs, repository-scoped permissions, MCP sessions, audit log
   - bare Git mirrors, authenticated Smart HTTP, ref namespaces with per-user push scoping
   - Tier-0 commit metadata: full messages, separate author/committer identities + timezones, parent
     graph, trailers, signature status, diff stats, and message search
   - Git identities anchored on email (never name similarity): harvested from authors/committers/
     co-author trailers, mapped to users by verified email / admin / explicit claim; unclaimed by default
+  - revision indexing: materialize a commit tree (no checkout/execution) and reuse the local index
+    engine into immutable per-commit snapshots; reused across branches, survive force-push;
+    revision-scoped entity search
   - lives in `beagle/service/` (separate from the local SQLite engine); FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
@@ -64,8 +67,8 @@ Current non-goals:
 - conversation ingestion
 - long-term memory
 - web UI
-- service Phases D, E, F, H, I (revision source indexing, dependency analysis, local bridge,
-  decision/feedback memory, comparison/consumers) — staged in `design/15`, not yet built
+- service Phases E, F, H, I (dependency analysis, local bridge, decision/feedback memory,
+  comparison/consumers) — staged in `design/15`, not yet built
 
 Do not introduce non-goal features unless the design files are intentionally updated first.
 

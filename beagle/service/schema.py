@@ -181,6 +181,27 @@ _V3 = [
     "CREATE INDEX IF NOT EXISTS idx_identities_user ON git_identities(verified_user_id)",
 ]
 
-MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2), (3, _V3)]
+_V4 = [
+    """
+    CREATE TABLE IF NOT EXISTS index_snapshots (
+        id TEXT PRIMARY KEY,
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        commit_sha TEXT NOT NULL,
+        tree_sha TEXT NOT NULL,
+        indexer_version TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'indexing',
+        file_count INTEGER,
+        entity_count INTEGER,
+        observation_count INTEGER,
+        edge_count INTEGER,
+        artifact_path TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE (repository_id, commit_sha)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_snapshots_repo ON index_snapshots(repository_id)",
+]
+
+MIGRATIONS: list[tuple[int, list[str]]] = [(1, _V1), (2, _V2), (3, _V3), (4, _V4)]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

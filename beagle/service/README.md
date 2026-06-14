@@ -5,10 +5,10 @@ independent of the local SQLite engine: it owns organizations, users, JWT
 identity, Git repository mirrors, and the HTTP API.
 
 **Implemented:** Phase A (JWT identity), Phase B (Git repository service),
-Phase C (commit metadata indexing + search), and Phase G (Git identity mapping).
-Phases D, E, F, H, I (revision source indexing, dependency analysis, local
-bridge, decision/feedback memory, comparison) are staged in `design/15` and not
-yet built.
+Phase C (commit metadata indexing + search), Phase D (per-commit source
+indexing), and Phase G (Git identity mapping). Phases E, F, H, I (dependency
+analysis, local bridge, decision/feedback memory, comparison) are staged in
+`design/15` and not yet built.
 
 ## Layout
 
@@ -25,6 +25,7 @@ yet built.
 | `git/commit_reader.py` | Parse reachable commit metadata from a bare repo. |
 | `commit_store.py`, `commit_indexer.py` | Persist, search, and incrementally index commit metadata. |
 | `git_identities.py` | Harvest Git identities and map them to verified users. |
+| `snapshot_store.py`, `revision_indexer.py` | Per-commit immutable index snapshots (materialize tree + reuse the engine). |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
 | `git/smart_http.py` | Authenticated `git http-backend` proxy. |
@@ -82,6 +83,10 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | GET | `/v1/repositories/{id}/commits` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/commits/search?q=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/commits/{sha}` | `source:read` + repo scope |
+| POST | `/v1/repositories/{id}/revisions/{rev}/index` | `repo:sync` + repo scope |
+| GET | `/v1/repositories/{id}/revisions/{rev}` | `source:read` + repo scope |
+| GET | `/v1/repositories/{id}/revisions/{rev}/search?q=` | `source:read` + repo scope |
+| GET | `/v1/repositories/{id}/snapshots` | `source:read` + repo scope |
 | GET | `/v1/identities` | `admin:identity` |
 | GET | `/v1/me/identities` | any valid token |
 | POST | `/v1/identities/map` | `admin:identity` |

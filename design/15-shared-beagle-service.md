@@ -1653,12 +1653,17 @@ who shared a workspace
 
 ## Phase D — revision indexing
 
-- [ ] Index commits parent-first.
-- [ ] Reuse shared ancestors.
-- [ ] Support merge commits.
-- [ ] Support force pushes.
-- [ ] Add snapshot manifests.
-- [ ] Include revision in every result.
+- [x] Index commits parent-first. *(rev-list --reverse --topo-order)*
+- [x] Reuse shared ancestors. *(snapshots keyed by repository+commit; reused, never re-indexed)*
+- [x] Support merge commits. *(merge result tree materialized and indexed as-is)*
+- [x] Support force pushes. *(snapshots immutable by commit; survive branch rewrite — GC of unreferenced snapshots deferred)*
+- [x] Add snapshot manifests. *(index_snapshots: counts, indexer version, status, artifact path)*
+- [x] Include revision in every result. *(snapshot search responses carry the commit sha)*
+
+Approach: materialize the commit tree (tracked files only, no checkout/execution)
+and reuse the existing local index engine, storing each commit's index as an
+immutable artifact. Delta-from-parent reuse and entity deltas (Tier 2) are a
+later optimization; snapshots are currently full per commit.
 
 ## Phase E — dependency analysis
 

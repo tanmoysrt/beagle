@@ -141,6 +141,41 @@ def test_commit_history_requires_repo_scope(client, app, user_id, tmp_path):
     assert response.status_code == 403
 
 
+def test_revision_index_and_search_api(client, app, user_id, tmp_path):
+    upstream = tmp_path / "upstream"
+    _make_upstream(upstream)
+    (upstream / "mod.py").write_text("def widget():\n    return 1\n")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "U", "GIT_AUTHOR_EMAIL": "u@e.com",
+           "GIT_COMMITTER_NAME": "U", "GIT_COMMITTER_EMAIL": "u@e.com"}
+    subprocess.run(["git", "add", "mod.py"], cwd=upstream, env=env, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "add mod"], cwd=upstream, env=env, check=True,
+                   capture_output=True)
+
+    token = _mint(
+        app, user_id, ["press"],
+        [permissions.REPO_REGISTER, permissions.REPO_SYNC, permissions.SOURCE_READ],
+    )
+    repo_id = client.post(
+        "/v1/repositories",
+        json={"slug": "press", "name": "Press", "remote_url": str(upstream)},
+        headers=_auth(token),
+    ).json()["repository"]["id"]
+    client.post(f"/v1/repositories/{repo_id}/sync", headers=_auth(token))
+    sha = app.state.container.mirror.resolve(repo_id, "refs/beagle/upstream/heads/main")
+
+    indexed = client.post(
+        f"/v1/repositories/{repo_id}/revisions/{sha}/index", headers=_auth(token)
+    ).json()
+    assert indexed["snapshot"]["status"] == "ready"
+
+    found = client.get(
+        f"/v1/repositories/{repo_id}/revisions/{sha}/search",
+        params={"q": "widget"}, headers=_auth(token),
+    ).json()
+    assert found["revision"] == sha
+    assert any(r["name"] == "widget" for r in found["results"])
+
+
 def test_identity_endpoints(client, app, user_id, tmp_path):
     _make_upstream(tmp_path / "upstream")
     token = _mint(
