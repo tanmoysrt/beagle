@@ -150,6 +150,15 @@ class GitMirror:
         )
         return [line for line in result.stdout.split() if line]
 
+    def read_file(self, repository_id: str, revision: str, path: str) -> bytes | None:
+        """Return a tracked file's bytes at ``revision``, or None if absent."""
+        repo = self._require(repository_id)
+        result = subprocess.run(
+            [self._git, "show", f"{revision}:{path}"],
+            cwd=str(repo), capture_output=True,
+        )
+        return result.stdout if result.returncode == 0 else None
+
     def export_tree(self, repository_id: str, revision: str, dest: Path) -> None:
         """Materialize a commit's tree into ``dest`` (tracked files only, no .git)."""
         path = self._require(repository_id)

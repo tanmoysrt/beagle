@@ -278,8 +278,37 @@ _V5 = [
     "CREATE INDEX IF NOT EXISTS idx_actors_decision ON decision_actors(decision_id)",
 ]
 
+_V6 = [
+    """
+    CREATE TABLE IF NOT EXISTS dependency_snapshots (
+        id TEXT PRIMARY KEY,
+        repository_id TEXT NOT NULL REFERENCES repositories(id),
+        commit_sha TEXT NOT NULL,
+        profile TEXT NOT NULL DEFAULT 'default',
+        sources TEXT NOT NULL DEFAULT '[]',
+        package_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        UNIQUE (repository_id, commit_sha, profile)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dependency_packages (
+        id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES dependency_snapshots(id),
+        ecosystem TEXT NOT NULL,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        hash TEXT,
+        source_type TEXT NOT NULL,
+        package_group TEXT NOT NULL DEFAULT 'default'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_dep_packages_snapshot ON dependency_packages(snapshot_id)",
+    "CREATE INDEX IF NOT EXISTS idx_dep_packages_name ON dependency_packages(name)",
+]
+
 MIGRATIONS: list[tuple[int, list[str]]] = [
-    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5)
+    (1, _V1), (2, _V2), (3, _V3), (4, _V4), (5, _V5), (6, _V6)
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

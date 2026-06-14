@@ -7,9 +7,12 @@ identity, Git repository mirrors, and the HTTP API.
 **Implemented:** Phase A (JWT identity), Phase B (Git repository service),
 Phase C (commit metadata indexing + search), Phase D (per-commit source
 indexing), Phase G (Git identity mapping), Phase H (decision/feedback memory),
-and Phase I comparison (compare revisions/branches, merge summary). Phases E, F
-and the Phase I consumer integrations (MCP/CI/admin UI) are staged in
-`design/15` and not yet built.
+Phase I comparison (compare revisions/branches, merge summary), and the
+deterministic core of Phase E (dependency manifest/lockfile parsing, hash
+verification, archive-safe unpack). The remaining work is Phase F (local
+bridge), the network-bound rest of Phase E (registry download → index
+downloaded source → cross-package resolution), and the Phase I consumer
+integrations (MCP/CI/admin UI).
 
 ## Layout
 
@@ -29,6 +32,7 @@ and the Phase I consumer integrations (MCP/CI/admin UI) are staged in
 | `snapshot_store.py`, `revision_indexer.py` | Per-commit immutable index snapshots (materialize tree + reuse the engine). |
 | `revision_compare.py` | Compare revisions/branches and summarize merges (files, entities, commits, authors). |
 | `decisions.py`, `feedback_store.py` | Change episodes, decisions + actors (roles/confirmation), feedback lifecycle. |
+| `dependencies/`, `dependency_store.py`, `dependency_service.py` | Parse manifests/lockfiles, verify hashes, archive-safe unpack, dependency snapshots. |
 | `git/mirror.py` | Bare mirrors: init, fetch upstream, refs, integrity, `pre-receive` hook. |
 | `git/refs.py` | Ref namespaces and push authorization. |
 | `git/smart_http.py` | Authenticated `git http-backend` proxy. |
@@ -90,6 +94,9 @@ All routes require `Authorization: Bearer <jwt>` (writes are rejected without it
 | GET | `/v1/repositories/{id}/revisions/{rev}` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/revisions/{rev}/search?q=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/snapshots` | `source:read` + repo scope |
+| POST | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `repo:sync` + repo scope |
+| GET | `/v1/repositories/{id}/revisions/{rev}/dependencies` | `source:read` + repo scope |
+| GET | `/v1/repositories/{id}/dependencies/search?q=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/compare?base=&head=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/compare-branches?target=&source=` | `source:read` + repo scope |
 | GET | `/v1/repositories/{id}/merge-summary/{rev}` | `source:read` + repo scope |

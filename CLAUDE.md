@@ -60,6 +60,9 @@ Current scope:
   - decision/feedback memory: change episodes, decisions with role-typed actors (confirmed vs inferred
     attribution; never derived from commit authorship), feedback lifecycle, history by entity, redacted
     session summaries
+  - dependency analysis (deterministic core): parse Python/JS manifests+lockfiles into pinned snapshots,
+    hash verification, archive-safe unpack (no scripts run); registry download + cross-package resolution
+    are the remaining network-bound slice
   - lives in `beagle/service/` (separate from the local SQLite engine); FastAPI + PostgreSQL (SQLite for tests)
 
 Current non-goals:
@@ -72,7 +75,8 @@ Current non-goals:
 - conversation ingestion
 - long-term memory
 - web UI
-- service Phases E, F (dependency analysis, local bridge) and the Phase I consumer integrations
+- service Phase F (local bridge), the network-bound rest of Phase E (registry download → index
+  downloaded source → cross-package resolution), and the Phase I consumer integrations
   (MCP/CI/admin UI) — staged in `design/15`, not yet built
 
 Do not introduce non-goal features unless the design files are intentionally updated first.

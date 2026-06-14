@@ -238,6 +238,16 @@ def feedback_record(
     typer.echo(item.id)
 
 
+@app.command("dependencies")
+def dependencies(
+    repository_id: str, revision: str,
+    database_url: str = _DB, repo_root: str = _ROOT, secret: str = _SECRET,
+) -> None:
+    container = _container(database_url, repo_root, secret)
+    result = container.dependency_service.analyze_revision(repository_id, revision)
+    typer.echo(f"{result.package_count} packages from {', '.join(result.sources) or '(none)'}")
+
+
 @app.command("compare-revisions")
 def compare_revisions(
     repository_id: str, base: str, head: str,

@@ -14,6 +14,8 @@ from beagle.service.commit_store import CommitStore
 from beagle.service.config import ServiceConfig
 from beagle.service.db import Database
 from beagle.service.decisions import DecisionStore
+from beagle.service.dependency_service import DependencyService
+from beagle.service.dependency_store import DependencyStore
 from beagle.service.feedback_store import FeedbackStore
 from beagle.service.git.commit_reader import CommitReader
 from beagle.service.git.mirror import GitMirror
@@ -52,6 +54,10 @@ class ServiceContainer:
         )
         self.revision_comparer = RevisionComparer(
             self.database, self.mirror, self.revision_indexer, self.commits
+        )
+        self.dependencies = DependencyStore()
+        self.dependency_service = DependencyService(
+            self.database, self.mirror, self.dependencies
         )
         self.repository_service = RepositoryService(
             self.repositories, self.mirror, self.commit_indexer, self.git_identities

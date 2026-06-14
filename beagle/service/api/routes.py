@@ -481,6 +481,48 @@ def store_session_summary(
     return {"user": identity.user_id, "summary_id": summary_id}
 
 
+@router.post("/repositories/{repository_id}/revisions/{revision}/dependencies")
+def analyze_dependencies(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.REPO_SYNC)
+    result = container.dependency_service.analyze_revision(repository_id, revision)
+    return {"user": identity.user_id, "dependencies": asdict(result)}
+
+
+@router.get("/repositories/{repository_id}/revisions/{revision}/dependencies")
+def get_dependencies(
+    request: Request,
+    repository_id: str,
+    revision: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    sha = container.mirror.resolve(repository_id, revision)
+    with container.database.connect() as conn:
+        snapshot = container.dependencies.get_snapshot(conn, repository_id, sha or revision)
+    return {"user": identity.user_id, "snapshot": snapshot}
+
+
+@router.get("/repositories/{repository_id}/dependencies/search")
+def search_dependencies(
+    request: Request,
+    repository_id: str,
+    q: str,
+    identity: AuthenticatedIdentity = Depends(authenticate),
+) -> dict:
+    container = container_of(request)
+    _authorize_repo(container, identity, repository_id, permissions.SOURCE_READ)
+    with container.database.connect() as conn:
+        packages = container.dependencies.search_packages(conn, repository_id, q)
+    return {"user": identity.user_id, "packages": packages}
+
+
 @router.get("/identities")
 def list_git_identities(
     request: Request, identity: AuthenticatedIdentity = Depends(authenticate)
