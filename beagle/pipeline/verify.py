@@ -14,6 +14,16 @@ SHAKY_CONFIDENCE = 0.75
 
 # A rewritten body that talks about the finding is the verifier thinking aloud,
 # not a finding. The author should never read it.
+# "I need to check the actual code... Let me look at the context." is a model
+# clearing its throat, not a verdict. Rejecting on one deletes a finding for no
+# stated reason, so an unreasoned rejection keeps the finding instead.
+PREAMBLE = re.compile(
+    r"^\s*(?:i (?:need|should|will|would|have) |let me |first[,. ]|to (?:verify|check)\b"
+    r"|i'?ll |looking at |i do not have |i don'?t have )",
+    re.I,
+)
+MIN_REASON_CHARS = 40
+
 WORKINGS = re.compile(
     r"\bdowngrad|\bupgrad(?:e|ing) to p\d|\bthis is rated\b|\bthe finding is\b"
     r"|\bwe cannot\b|\bi cannot confirm\b|\bconfidence\b|\bp\d requires\b"
@@ -66,13 +76,24 @@ class Verifier:
             verdict = self.check(finding, system, review_id, budget, self.tier_for(finding))
             if not isinstance(verdict, dict):
                 kept.append(finding)
-            elif verdict.get("verdict") == "reject":
+            elif verdict.get("verdict") == "reject" and self.reasoned(verdict, finding):
                 finding.status = "rejected"
                 finding.metadata["reject_reason"] = verdict.get("reason", "")
                 rejected.append(finding)
             else:
                 kept.append(self.revise(finding, verdict))
         return kept, rejected
+
+    def reasoned(self, verdict: dict, finding: Finding) -> bool:
+        """A rejection has to say why. Silence is not a reason to lose a finding."""
+        reason = (verdict.get("reason") or "").strip()
+        if len(reason) < MIN_REASON_CHARS or PREAMBLE.match(reason):
+            log.info(
+                "keeping %s: the second check rejected it without a reason (%r)",
+                finding.title, reason[:60],
+            )
+            return False
+        return True
 
     def system_for(self, prompt: str, context: str) -> list[dict]:
         """Context goes in the cached prefix so a unit's findings share one read."""

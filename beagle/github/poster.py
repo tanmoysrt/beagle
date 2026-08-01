@@ -10,6 +10,7 @@ from ..config import Severity
 from ..errors import GithubError
 from ..pipeline.models import (
     Finding,
+    Location,
     ReviewSummary,
     count_by_severity,
     score_for,
@@ -176,9 +177,15 @@ class ReviewPoster:
         """A batched review is rejected whole, so a finding GitHub will not take
         must move to the summary before the request goes out, not after it fails.
 
-        A finding on a file in the diff always gets a comment, on its own line
-        when GitHub takes that line and on the nearest shown line when it does
-        not. Only a finding on a file the diff never touches has nowhere to go.
+        A finding names every place it occurs. If any of them is in the diff, the
+        comment goes there, on its own line when GitHub takes that line and on the
+        nearest shown line when it does not.
+
+        A finding with no location in the diff is about code this change never
+        touched. Sometimes that is real, a caller the change breaks, but then the
+        reviewer should have cited the changed line that breaks it. More often it
+        is the reviewer reading past the change. Either way there is nowhere on
+        this pull request to put it, so it is dropped and counted.
         """
         if not self.inline:
             return [], list(findings)
@@ -190,11 +197,14 @@ class ReviewPoster:
 
         comments, unplaced = [], []
         for finding in findings:
-            lines = commentable.get(finding.file)
-            if not lines:
+            spot = next(
+                (item for item in finding.locations if commentable.get(item.file)), None
+            )
+            if spot is None:
+                log.info("dropping %s: no location in the diff", finding.title)
                 unplaced.append(finding)
                 continue
-            comments.append(comment_payload(finding, lines))
+            comments.append(comment_payload(finding, spot, commentable[spot.file]))
         return comments, unplaced
 
     def submit(self, number: int, head_sha: str, verdict: str, comments: list[dict]) -> int:
@@ -244,18 +254,18 @@ class ReviewPoster:
         ))
 
 
-def comment_payload(finding: Finding, commentable: set[int]) -> dict:
+def comment_payload(finding: Finding, spot: Location, commentable: set[int]) -> dict:
     """A comment on the line, or on the nearest line of the same file that the
     diff shows. A batched review takes no file-level comment, so a finding whose
     line is missing or outside a hunk goes to the closest line rather than to
     the summary, where it would be further from the code it is about."""
     body = finding_body(finding, inline=True)
-    line = finding.line_end or finding.line_start or 0
+    line = spot.line_end or spot.line_start or 0
     if line <= 0 or line not in commentable:
         line = min(commentable, key=lambda number: abs(number - line))
-        return {"body": body, "path": finding.file, "side": "RIGHT", "line": line}
-    payload = {"body": body, "path": finding.file, "side": "RIGHT", "line": line}
-    start = finding.line_start
+        return {"body": body, "path": spot.file, "side": "RIGHT", "line": line}
+    payload = {"body": body, "path": spot.file, "side": "RIGHT", "line": line}
+    start = spot.line_start
     if start and 0 < start < line and start in commentable:
         payload["start_line"] = start
         payload["start_side"] = "RIGHT"
@@ -363,7 +373,7 @@ def folded(finding: Finding) -> list[str]:
 
 def render_summary(
     summary: dict,
-    unplaced: list[Finding],
+    unplaced: list[Finding],  # counted only: there is nowhere on the diff to put them
     resolved: list[str],
     mention: str,
     commit: str = "",
@@ -374,11 +384,9 @@ def render_summary(
     if unplaced:
         lines += [
             "",
-            "**These are about files this change does not touch:**",
-            "",
+            f"_{len(unplaced)} finding(s) about files this change does not touch "
+            "were not reported._",
         ]
-        for finding in unplaced:
-            lines += [finding_body(finding, inline=False), ""]
     if resolved:
         lines += ["", "**Settled since the last review:**", ""] + resolved
 

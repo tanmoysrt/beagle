@@ -74,7 +74,11 @@ updates it. Cite the caller's path and line.
 
 Every finding carries the line it is about, counted on the `+++` side of the
 diff. Give the line a reader would put the cursor on, not the line above it.
-Without it the finding cannot become a comment on the code.
+
+The line must be one this diff changes. When the damage shows up in a file the
+diff does not touch, cite the changed line that causes it and name the other
+file and line in the body. A finding that points only outside the diff has
+nowhere to go on the pull request and is dropped, however true it is.
 
 HOW A FINDING READS
 The title is three to six words in Title Case that name the defect, not the
