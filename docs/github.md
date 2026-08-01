@@ -59,7 +59,9 @@ The index always follows the base branch of the pull request. Beagle does not ma
 
 ## What Beagle writes
 
-Beagle writes one pull request review. The review holds the summary, every line comment, and the state. So one review gives you one notification.
+Beagle writes one summary comment for the pull request, and it changes that same comment from then on. The pull request never collects a second summary.
+
+The line comments and the state of the review go out together in one review submission. So a round of review gives you one notification, or none if Beagle finds nothing new and the verdict does not change.
 
 The summary starts with a confidence score out of 5. Then one sentence tells you if the change is safe to merge, or what to correct first. One or two sentences tell you why. A short list names the files that need a second look. There is no table and no list of counts.
 
@@ -83,11 +85,12 @@ Beagle finds its own comments by a hidden marker in the text. The marker holds t
 On a second review of the same pull request:
 
 - A finding that is still there: Beagle does not write again. The discussion stays.
-- A finding that is gone: the new summary tells you that the author corrected it, or that Beagle withdrew it.
-- A new finding: Beagle adds it to the new review.
-- The state: Beagle sets it again with each review.
+- A finding that is gone: the summary tells you that the author corrected it, or that Beagle withdrew it.
+- A new finding: Beagle adds it to a new review.
+- The summary: Beagle changes the same comment. This gives no notification.
+- The state: Beagle sets it again only if the verdict changes.
 
-Each new review is one more notification. There is no notification for a comment that does not change.
+A round with no new finding and no change of verdict writes nothing to GitHub. The summary changes quietly.
 
 ### When you say a finding is wrong
 
@@ -95,7 +98,7 @@ Beagle answers in the thread, then it closes the thread. GitHub calls this "reso
 
 To close a thread, the account needs write permission on the repository. A read-only account can write comments, but GitHub refuses to let it close a thread. Beagle records that in the log and continues, so nothing else stops.
 
-Beagle also writes the summary again, in the same place. The finding no longer counts, so the confidence score can go up and the verdict can change. You get no new notification for this, because Beagle changes the review it already wrote.
+Beagle also writes the summary again, in the same comment. The finding no longer counts, so the confidence score can go up. You get no notification for this.
 
 ### A force push
 

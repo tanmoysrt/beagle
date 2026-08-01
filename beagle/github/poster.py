@@ -28,8 +28,10 @@ COMMENT_TITLE = re.compile(r"\*\*P\d — (.+?)\*\*")
 class ReviewPoster:
     """Puts a review on a pull request and keeps it in step on a re-push.
 
-    Everything goes out as one review submission, so a round of review is one
-    notification. Comments are matched by the hidden marker in their body rather
+    One comment holds the summary and is edited from then on, so the pull request
+    never collects a second one. New findings ride out together in one review
+    submission. A round that finds nothing new and changes no verdict posts
+    nothing at all. Comments are matched by the hidden marker in their body rather
     than by a stored identifier, so the mapping survives a lost database.
     """
 
@@ -68,15 +70,42 @@ class ReviewPoster:
         }
         withdrawn = {item.fingerprint for item in result.suppressed + result.rejected}
 
-        body = render_summary(
+        self.write_summary(number, render_summary(
             result.summary.to_dict(),
             unplaced,
             resolution_lines(closing, withdrawn, head_sha),
             self.mention,
             self.commit_note(head_sha),
-        )
-        self.submit(number, head_sha, result.summary.verdict, body, comments)
-        return {"added": len(comments), "resolved": len(closing), "in_summary": len(unplaced)}
+        ))
+        verdict = result.summary.verdict
+        posted = comments or verdict != last_verdict
+        if posted:
+            self.submit(number, head_sha, verdict, result.summary.description, comments)
+        return {
+            "added": len(comments),
+            "resolved": len(closing),
+            "in_summary": len(unplaced),
+            "review_posted": bool(posted),
+        }
+
+    def write_summary(self, number: int, body: str) -> None:
+        """One summary comment for the life of the pull request, edited in place."""
+        stored = self.sync.pr(number).get("summary_comment")
+        if stored is None:
+            stored = next(
+                (item["id"] for item in self.github.issue_comments(number)
+                 if SUMMARY_MARKER in (item.get("body") or "")),
+                None,
+            )
+        try:
+            if stored:
+                self.github.update_issue_comment(stored, body)
+            else:
+                stored = self.github.create_issue_comment(number, body).get("id")
+        except GithubError as exc:
+            log.warning("could not write the summary on #%s: %s", number, exc)
+            return
+        self.sync.update_pr(number, summary_comment=stored)
 
     def summary_state(self, number: int):
         """The summary as posted, and the findings that still stand."""
@@ -149,11 +178,13 @@ class ReviewPoster:
     def submit(
         self, number: int, head_sha: str, verdict: str, body: str, comments: list[dict]
     ) -> None:
+        """The review carries the findings and the state. The summary lives elsewhere,
+        so the body is only the one line GitHub needs for REQUEST_CHANGES."""
         event = "REQUEST_CHANGES" if verdict == "request_changes" else "COMMENT"
+        body = body.strip() or "See the summary comment."
         for attempt in (event, "COMMENT"):
             try:
-                posted = self.github.submit_review(number, attempt, body, comments, head_sha)
-                self.sync.update_pr(number, review_id=posted.get("id"))
+                self.github.submit_review(number, attempt, body, comments, head_sha)
                 return
             except GithubError as exc:
                 # GitHub refuses REQUEST_CHANGES on a pull request the token's own account opened.
@@ -167,9 +198,6 @@ class ReviewPoster:
         author rejects a finding, that summary is wrong, and a new review would
         be a second notification for a correction.
         """
-        review_id = self.sync.pr(number).get("review_id")
-        if not review_id:
-            return
         state = self.summary_state(number)
         if state is None:
             return
@@ -177,13 +205,9 @@ class ReviewPoster:
         summary.score = score_for(findings, summary.coverage)
         summary.counts = count_by_severity(findings)
         summary.verdict = verdict_for(findings, self.fail_on)
-        body = render_summary(
+        self.write_summary(number, render_summary(
             summary.to_dict(), [], [], self.mention, self.commit_note(head_sha)
-        )
-        try:
-            self.github.update_review(number, review_id, body)
-        except GithubError as exc:
-            log.warning("could not refresh the summary on #%s: %s", number, exc)
+        ))
 
 
 def comment_payload(finding: Finding, commentable: set[int]) -> dict | None:

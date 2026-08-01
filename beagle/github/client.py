@@ -85,6 +85,9 @@ class GithubClient:
     def create_issue_comment(self, number: int, body: str) -> dict:
         return self.call("POST", f"/issues/{number}/comments", json={"body": body})
 
+    def update_issue_comment(self, comment_id: int, body: str) -> dict:
+        return self.call("PATCH", f"/issues/comments/{comment_id}", json={"body": body})
+
     def reply_to_review_comment(self, number: int, comment_id: int, body: str) -> dict:
         return self.call(
             "POST", f"/pulls/{number}/comments/{comment_id}/replies", json={"body": body}
@@ -104,16 +107,13 @@ class GithubClient:
         comments: list[dict] | None = None,
         commit_id: str | None = None,
     ) -> dict:
-        """One review: the summary, every inline comment, and the state, in one notification."""
+        """One review: every new inline comment and the state, in one notification."""
         payload: dict = {"event": event, "body": body}
         if comments:
             payload["comments"] = comments
         if commit_id:
             payload["commit_id"] = commit_id
         return self.call("POST", f"/pulls/{number}/reviews", json=payload)
-
-    def update_review(self, number: int, review_id: int, body: str) -> dict:
-        return self.call("PUT", f"/pulls/{number}/reviews/{review_id}", json={"body": body})
 
     def graphql(self, query: str, variables: dict) -> dict:
         """Resolving a thread exists only here, so one GraphQL call earns its place."""
