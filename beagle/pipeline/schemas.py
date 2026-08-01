@@ -142,7 +142,7 @@ COMMENT_SCHEMA = {
     "properties": {
         "intent": {
             "type": "string",
-            "enum": ["false_positive", "style_rule", "question", "ignore"],
+            "enum": ["false_positive", "dismiss", "style_rule", "question", "ignore"],
         },
         "rule": {"type": "string", "description": "For style_rule, the convention as one sentence"},
         "reason": {"type": "string", "description": "A short paraphrase of what the author said"},

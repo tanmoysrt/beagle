@@ -106,29 +106,34 @@ To get only the summary, set `post_style = "summary_only"`.
 
 ## What you can write
 
-Write the name of the account, then the command. The default name is `beagle`. Set `github.mention` to the name of your account, for example `beagle-app`. The command must be the first word after the name.
+Write the name of the account, then what you want. The default name is `beagle`. Set `github.mention` to the name of your account, for example `beagle-app`.
 
 When Beagle reads your comment, it puts a 👍 on that comment and a 👀 on the pull request. When the work is complete, the 👀 becomes a 👍. So you know that Beagle got the message and that it is busy. Beagle does not write a reply to tell you the same thing, because that would be one more notification.
 
-In the table below, `@beagle` is the account that `github.mention` names.
+There are two commands. The word must come first, after the name.
 
 | Command | Result |
 | --- | --- |
-| `@beagle false positive [why]` | Beagle records the error and holds back findings like it |
-| `@beagle fp` | The same, in fewer words |
-| `@beagle not now` | Beagle drops this one instance and learns nothing |
-| `@beagle explain` | Beagle answers with more detail |
-| `@beagle rule: <text>` | Beagle records a team convention |
 | `@beagle review` | Beagle reviews the pull request again |
-| `@beagle rules` | Beagle lists the conventions |
-| `@beagle status` | Beagle reports the condition of the index |
-| `@beagle help` | Beagle lists these commands |
+| `@beagle explain` | Beagle gives more detail about the finding in this thread |
+
+For everything else, write ordinary English. A small model reads your words and finds one of five intentions:
+
+| What you say | What Beagle does |
+| --- | --- |
+| The finding is wrong, or does not apply | Records the error and holds back findings like it |
+| Not now, or not in this pull request | Drops this one instance and learns nothing |
+| A convention of your team | Records the convention and follows it |
+| A question | Answers it |
+| Anything else | Nothing |
+
+So `@beagle that is wrong, the caller checks it first` teaches Beagle, and `@beagle we always do it this way here` becomes a rule. You do not need to remember a word for each one.
 
 Write inside the thread of a finding to speak about that finding. Write a new comment to speak about the pull request.
 
-You do not need these exact words. Beagle sends any other text to a small model, which puts it in one of four groups: false positive, style rule, question, or ignore. `@beagle we always do it this way here` becomes a rule.
-
 A 👍 on a comment of Beagle counts as agreement. A 👎 counts as an error. A reaction has less weight than a reply, because it says less.
+
+To see the conventions, the condition of the index, or the money that Beagle used, use the client: `beagle rules`, `beagle doctor`, `beagle stats`. The pull request is for the review, not for the operation of the server.
 
 ## Safety
 

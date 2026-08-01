@@ -10,26 +10,15 @@ from .events import DEFAULT_MENTION, FINDING_MARKER, Comment, command_text
 log = logging.getLogger("beagle.github.comments")
 
 COMMAND_HELP = [
-    ("false positive [why]", "the finding is wrong, and Beagle should learn from it"),
-    ("fp", "the same, in fewer words"),
-    ("not now", "dismiss this one instance and learn nothing"),
-    ("explain", "more detail about the finding in this thread"),
-    ("rule: <text>", "record a team convention"),
     ("review", "review the pull request again"),
-    ("rules", "list the conventions"),
-    ("status", "the condition of the index and the queue"),
-    ("help", "this list"),
+    ("explain", "more detail about the finding in this thread"),
 ]
 
+# Only the two verbs that must not be guessed at. Everything else a person
+# writes is ordinary English and goes to the classifier.
 FAST_PATHS = (
-    ("false_positive", re.compile(r"^(?:false[\s-]?positive|fp)\b[:,]?\s*(.*)", re.I | re.S)),
-    ("dismiss", re.compile(r"^(?:not now|dismiss)\b[:,]?\s*(.*)", re.I | re.S)),
-    ("rule", re.compile(r"^rule:\s*(.+)", re.I | re.S)),
     ("explain", re.compile(r"^explain\b\s*(.*)", re.I | re.S)),
     ("review", re.compile(r"^review\b", re.I)),
-    ("rules", re.compile(r"^rules\b", re.I)),
-    ("status", re.compile(r"^status\b", re.I)),
-    ("help", re.compile(r"^help\b", re.I)),
 )
 
 
@@ -100,12 +89,6 @@ class CommentRouter:
             # the 👀 on the pull request is the acknowledgement; a reply would be a
             # second notification for the same thing
             self.service.enqueue("github_review", {"pr": comment.number})
-        elif action == "rules":
-            self.reply(comment, rules_block(self.service.rules.active(), self.mention))
-        elif action == "status":
-            self.reply(comment, status_block(self.service.report.index_status()))
-        elif action == "help":
-            self.reply(comment, help_block(self.mention))
 
     def feedback(self, comment: Comment, fingerprint: str | None, action: str, reason: str) -> None:
         finding = self.finding_for(comment.number, fingerprint)
@@ -171,6 +154,8 @@ class CommentRouter:
         intent = reply.data.get("intent")
         if intent == "false_positive":
             return "false_positive", reply.data.get("reason") or text
+        if intent == "dismiss":
+            return "dismiss", reply.data.get("reason") or text
         if intent == "style_rule":
             return "rule", reply.data.get("rule") or text
         if intent == "question":
@@ -218,25 +203,3 @@ def parse(text: str) -> tuple[str | None, str]:
     return None, ""
 
 
-def help_block(mention: str) -> str:
-    lines = ["**What you can ask me**", "", "| command | meaning |", "| --- | --- |"]
-    lines += [f"| `@{mention} {command}` | {meaning} |" for command, meaning in COMMAND_HELP]
-    lines.append("")
-    lines.append("👍 on one of my comments counts as agreement, 👎 as a false positive.")
-    return "\n".join(lines)
-
-
-def rules_block(rules: list[dict], mention: str) -> str:
-    if not rules:
-        return f"No conventions recorded yet. Add one with `@{mention} rule: <text>`."
-    lines = ["**Team conventions**", "", "| id | rule | hits |", "| --- | --- | --- |"]
-    lines += [f"| {rule['id']} | {rule['body']} | {rule['hits']} |" for rule in rules]
-    return "\n".join(lines)
-
-
-def status_block(status: dict) -> str:
-    return (
-        f"Indexed commit `{str(status.get('sha') or 'none')[:7]}` · "
-        f"{status.get('files', 0)} files · {status.get('symbols', 0)} symbols · "
-        f"{status.get('pending_embeddings', 0)} chunks waiting for an embedding."
-    )

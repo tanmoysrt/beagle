@@ -110,7 +110,7 @@ def comments_section(mention: str = DEFAULT_MENTION) -> str:
     lines = [
         "## Pull request comments",
         "",
-        "With GitHub enabled, reply to Beagle in a pull request. Anything else is ignored.",
+        "With GitHub enabled, reply to Beagle in a pull request. There are two commands.",
         "",
         "| command | meaning |",
         "| --- | --- |",
@@ -118,9 +118,11 @@ def comments_section(mention: str = DEFAULT_MENTION) -> str:
     lines += [f"| `@{mention} {command}` | {meaning} |" for command, meaning in COMMAND_HELP]
     lines += [
         "",
-        "Free wording works too: a reply is classified into false positive, style rule, "
-        "question or ignore. A reply inside a finding thread applies to that finding; a "
-        "top-level comment applies to the pull request.",
+        "Everything else is ordinary English. A small model reads it and finds one of: "
+        "false positive, dismiss, style rule, question, or nothing. So `that is wrong, the "
+        "caller checks it` holds back findings like that one, and `we always do it this way "
+        "here` becomes a convention. A reply inside a finding thread applies to that finding; "
+        "a top-level comment applies to the pull request.",
     ]
     return "\n".join(lines)
 
