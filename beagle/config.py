@@ -44,7 +44,6 @@ class ServerCfg(Section):
 class RepoCfg(Section):
     url: str
     default_base: str = "main"
-    languages: list[str] = Field(default_factory=lambda: ["py", "ts", "js", "go", "vue"])
     ignore: list[str] = Field(default_factory=list)
 
 
@@ -73,6 +72,7 @@ class EmbeddingsCfg(Section):
 class GithubCfg(Section):
     token: str | None = None
     repo: str | None = None
+    api_url: str = "https://api.github.com"
     mode: Literal["poll", "webhook"] = "poll"
     poll_interval_seconds: int = Field(default=60, ge=10)
     webhook_secret: str | None = None
@@ -173,14 +173,7 @@ class LoadedConfig:
 
 
 class ConfigProvider:
-    """Holds the live config so callers never hang on to stale values.
-
-    Review, memory, github, prompts and context are swapped on reload; changing
-    server, repo, llm or embeddings needs a restart and is reported instead.
-    """
-
-    RELOADABLE = ("review", "memory", "github", "prompts", "context")
-    RESTART_ONLY = ("server", "repo", "llm", "embeddings")
+    """Holds the live config so callers never hang on to stale values."""
 
     def __init__(self, loaded: LoadedConfig):
         self.loaded = loaded
@@ -189,18 +182,6 @@ class ConfigProvider:
     def current(self) -> Config:
         return self.loaded.config
 
-    def reload(self) -> list[str]:
-        """Re-read the file, returning the sections that need a restart."""
-        fresh = load_config(self.loaded.path)
-        old, new = self.loaded.config, fresh.config
-        needs_restart = [
-            name for name in self.RESTART_ONLY if getattr(old, name) != getattr(new, name)
-        ]
-        merged = old.model_copy(
-            update={name: getattr(new, name) for name in self.RELOADABLE}
-        )
-        self.loaded = LoadedConfig(merged, fresh.raw, fresh.path)
-        return needs_restart
 
 
 def load_config(path: Path | str = DEFAULT_CONFIG_PATH) -> LoadedConfig:

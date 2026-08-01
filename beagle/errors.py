@@ -14,10 +14,6 @@ class MigrationError(BeagleError):
     exit_code = 2
 
 
-class IndexMissingError(BeagleError):
-    exit_code = 3
-
-
 class RepoError(BeagleError):
     """Git operation failed: bad ref, unreachable remote, dirty mirror."""
 
@@ -33,6 +29,12 @@ class ProviderError(BeagleError):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
+
+
+class GithubError(BeagleError):
+    """GitHub refused a request or could not be reached."""
+
+    exit_code = 4
 
 
 class BudgetExceeded(BeagleError):

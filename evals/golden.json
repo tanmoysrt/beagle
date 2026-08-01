@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "id": "sqli-in-app-code",
+      "diff": "diff --git a/src/api/users.py b/src/api/users.py\n--- a/src/api/users.py\n+++ b/src/api/users.py\n@@ -10,6 +10,9 @@ from db import connection\n \n def search_users(term, limit=50):\n-    return connection.execute(\"select id, email from users limit ?\", (limit,)).fetchall()\n+    query = \"select id, email from users where email like '%\" + term + \"%' limit \" + str(limit)\n+    return connection.execute(query).fetchall()\n+\n",
+      "expect": [
+        {
+          "file": "src/api/users.py",
+          "pattern": "sql|injection|parameteris|parameteriz|concatenat",
+          "category": "security",
+          "severity": "P0"
+        }
+      ]
+    },
+    {
+      "id": "off-by-one",
+      "diff": "diff --git a/src/pager.py b/src/pager.py\n--- a/src/pager.py\n+++ b/src/pager.py\n@@ -1,8 +1,8 @@\n def page(items, page_number, per_page):\n-    start = (page_number - 1) * per_page\n-    return items[start : start + per_page]\n+    start = page_number * per_page\n+    return items[start : start + per_page - 1]\n",
+      "expect": [
+        {
+          "file": "src/pager.py",
+          "pattern": "off.by.one|page_number|first page|drops|last item|boundary|index"
+        }
+      ]
+    },
+    {
+      "id": "restraint-on-a-clean-rename",
+      "diff": "diff --git a/src/report.py b/src/report.py\n--- a/src/report.py\n+++ b/src/report.py\n@@ -1,10 +1,10 @@\n-def gen_rpt(rows, fmt):\n-    if fmt == \"csv\":\n-        return to_csv(rows)\n-    return to_json(rows)\n+def generate_report(rows, output_format):\n+    if output_format == \"csv\":\n+        return to_csv(rows)\n+    return to_json(rows)\n",
+      "forbid": [
+        {
+          "file": "src/report.py",
+          "pattern": "validat|unsupported format|error handling|edge case|docstring|type hint"
+        }
+      ]
+    }
+  ]
+}

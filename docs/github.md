@@ -1,0 +1,144 @@
+# GitHub
+
+Beagle can review pull requests and can learn from the replies of the team. The GitHub interface is optional. Without it, Beagle operates through the HTTP interface and the client.
+
+## What you need
+
+- A machine account, for example `beagle-bot`. Do not use a personal account.
+- A fine-grained personal access token for that account, with these permissions on the repository: **Contents: read** and **Pull requests: write**.
+
+Put the token in the configuration:
+
+```toml
+[github]
+token = "github_pat_..."
+repo  = "acme/api"
+```
+
+The interface starts when both keys have a value. To stop it, remove the token.
+
+## Two modes
+
+| Mode | What Beagle does | What you must do on GitHub |
+| --- | --- | --- |
+| `poll` (default) | Beagle asks GitHub for the open pull requests every 60 seconds | Nothing |
+| `webhook` | GitHub tells Beagle immediately | Add one webhook |
+
+Use `poll` first. It needs no setup and it is enough for most teams. Change to `webhook` if you want a review to start in one second instead of one minute.
+
+### The webhook
+
+Add a webhook to the repository:
+
+- **Payload URL**: `https://your-server/v1/github/webhook`
+- **Content type**: `application/json`
+- **Secret**: the same text as `github.webhook_secret`
+- **Events**: Pull requests, Issue comments, Pull request review comments
+
+```toml
+[github]
+mode = "webhook"
+webhook_secret = "a long random text"
+```
+
+Beagle refuses a request that has no correct signature. If you do not set `webhook_secret`, the endpoint returns 403. This prevents an open endpoint by accident.
+
+## What starts a review
+
+Beagle reviews a pull request when the head commit changes and all of these are true:
+
+- The action is in `github.review_on`. The default is `opened` and `synchronize`.
+- The pull request is not a draft.
+- The pull request comes from the same repository, or `review_forks` is `true`.
+
+Beagle records the head commit before the review starts. If the review fails, Beagle does not try again. A review costs money, so Beagle does not repeat one without a request. To ask again, write `@beagle review`.
+
+The index always follows the base branch of the pull request. Beagle does not make an index for each pull request. Refer to [reviews.md](reviews.md).
+
+## What Beagle writes
+
+For each finding, Beagle writes one comment on the line of the code. Each comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
+
+Beagle also writes one summary comment. The summary contains the verdict, the counts, and the money and the time that the review used.
+
+Beagle then sets the state of the review:
+
+| Verdict | State |
+| --- | --- |
+| `request_changes` | REQUEST_CHANGES |
+| `comment` or `approve` | COMMENT |
+
+Beagle never approves a pull request. A person approves.
+
+### A second push
+
+Beagle finds its own comments by a hidden marker in the text. The marker holds the fingerprint of the finding. So Beagle knows what it wrote before, even after a loss of the database.
+
+On a second review of the same pull request:
+
+- A finding that is still there: Beagle does not write again. The discussion stays.
+- A finding that is gone: Beagle answers in the thread with `✔ Resolved in <commit>`.
+- A new finding: Beagle writes a new comment.
+- The summary: Beagle changes the text of the same comment.
+- The state: Beagle sets it again only if the verdict changed.
+
+Beagle does not hide a thread. GitHub gives this operation only in its GraphQL interface.
+
+### A force push
+
+A force push changes the head commit, so Beagle reviews the pull request again. Beagle gets the new head even if it is not a continuation of the old head.
+
+What the review costs depends on the code, not on the commit:
+
+- An amend or a rebase that keeps the same code gives the same diff. Beagle reuses each answer, the review costs nothing, and no comment changes.
+- A force push that changes the code gives a different diff. Beagle reviews the units that changed. Refer to [reviews.md](reviews.md).
+
+A force push can make GitHub mark a comment of Beagle as outdated. Beagle keeps that comment, because a new comment would lose the discussion in the thread.
+
+GitHub refuses a comment if the line is not in the diff. Beagle then moves that finding into the summary comment. Beagle loses no finding.
+
+To get only the summary, set `post_style = "summary_only"`.
+
+## What you can write
+
+Start a comment with `@beagle`.
+
+| Command | Result |
+| --- | --- |
+| `@beagle false positive [why]` | Beagle records the error and holds back findings like it |
+| `@beagle fp` | The same, in fewer words |
+| `@beagle not now` | Beagle drops this one instance and learns nothing |
+| `@beagle explain` | Beagle answers with more detail |
+| `@beagle rule: <text>` | Beagle records a team convention |
+| `@beagle review` | Beagle reviews the pull request again |
+| `@beagle review deep` | The same, with the strongest model on each file |
+| `@beagle rules` | Beagle lists the conventions |
+| `@beagle status` | Beagle reports the condition of the index |
+| `@beagle help` | Beagle lists these commands |
+
+Write inside the thread of a finding to speak about that finding. Write a new comment to speak about the pull request.
+
+You do not need these exact words. Beagle sends any other text to a small model, which puts it in one of four groups: false positive, style rule, question, or ignore. `@beagle we always do it this way here` becomes a rule.
+
+A 👍 on a comment of Beagle counts as agreement. A 👎 counts as an error. A reaction has less weight than a reply, because it says less.
+
+## Safety
+
+- The text of a comment only selects an action from a fixed list. Beagle never executes it.
+- The text of a comment never enters the review of this or any other pull request.
+- Beagle ignores its own comments. Each comment that Beagle writes holds a marker, and Beagle does not answer a comment that holds one.
+- Beagle does not review a pull request from a fork unless you set `review_forks = true`. A fork can contain any code.
+
+## Costs
+
+Each push to a pull request starts one review. On a busy repository this is the largest cost of Beagle. Three controls limit it:
+
+- `review.max_cost_usd` stops one review.
+- `review_on` can hold only `opened`. Then a push does not start a review, and a person writes `@beagle review` when the change is ready.
+- `server.max_parallel_reviews` limits how many reviews operate together.
+
+Use `beagle stats` to see the money that Beagle used.
+
+## When something does not operate
+
+Use `beagle doctor`. It shows a `github` check. The check gives the name of the repository and states if the token gives write access. A token with read access only can review, but it cannot write a comment.

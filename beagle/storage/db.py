@@ -120,21 +120,6 @@ class Storage:
     def stamp_value(self, key: str) -> str | None:
         return self.core.scalar("select value from config_stamps where key = ?", (key,))
 
-    def check_embedding_space(self, base_url: str, model: str, dims: int) -> str | None:
-        """Refuse to mix embedding spaces; returns the old stamp when it changed."""
-        current = f"{base_url}:{model}:{dims}"
-        previous = self.stamp_value("embedding_space")
-        if previous is None:
-            self.stamp("embedding_space", current)
-            return None
-        if previous != current:
-            return previous
-        return None
-
-    def adopt_embedding_space(self, base_url: str, model: str, dims: int) -> None:
-        """Accept a new embedding space after the old vectors have been cleared."""
-        self.stamp("embedding_space", f"{base_url}:{model}:{dims}")
-
     def vector_dims(self) -> int | None:
         stamp = self.stamp_value("vector_dims")
         return int(stamp) if stamp else None

@@ -12,6 +12,9 @@ from ..storage.dao import CallLog
 
 RETRY_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
+# A refused connection is not a busy server: fail fast instead of backing off.
+TRANSPORT_ATTEMPTS = 2
+MAX_BACKOFF_SECONDS = 30.0
 
 
 class EmbeddingClient:
@@ -63,12 +66,16 @@ class EmbeddingClient:
     def post_with_retries(self, payload: dict) -> dict:
         started = time.monotonic()
         last_error = None
+        transport_failures = 0
         for attempt in range(MAX_ATTEMPTS):
             try:
                 response = self.client.post(self.url, json=payload)
             except httpx.HTTPError as exc:
                 last_error = ProviderError(f"embeddings request failed: {exc}", retryable=True)
-                self.backoff(attempt)
+                transport_failures += 1
+                if transport_failures >= TRANSPORT_ATTEMPTS:
+                    break
+                time.sleep(0.5)
                 continue
 
             if response.status_code == 200:
@@ -106,9 +113,9 @@ class EmbeddingClient:
     def backoff(self, attempt: int, response: httpx.Response | None = None) -> None:
         retry_after = response.headers.get("retry-after") if response else None
         if retry_after and retry_after.isdigit():
-            time.sleep(min(float(retry_after), 30.0))
+            time.sleep(min(float(retry_after), MAX_BACKOFF_SECONDS))
             return
-        time.sleep(min(2**attempt + random.random(), 30.0))
+        time.sleep(min(2**attempt + random.random(), MAX_BACKOFF_SECONDS))
 
     def log_call(
         self, payload: dict, data: dict | None, started: float, error: str | None = None

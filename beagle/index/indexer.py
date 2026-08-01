@@ -11,6 +11,7 @@ from ..storage.dao import IndexStore
 from .chunking import chunk_file
 from .graph import GraphBuilder, symbol_key
 from .symbols import ParsedFile, SymbolExtractor
+from .vectors import VectorStore
 
 
 @dataclass
@@ -35,13 +36,26 @@ class Indexer:
     pull request diffs are overlaid at review time and never written here.
     """
 
-    def __init__(self, store: IndexStore, mirror: Mirror, selector: FileSelector):
+    def __init__(
+        self,
+        store: IndexStore,
+        mirror: Mirror,
+        selector: FileSelector,
+        vectors: VectorStore | None = None,
+    ):
         self.store = store
         self.mirror = mirror
         self.selector = selector
+        self.vectors = vectors
         self.extractor = SymbolExtractor()
         self.graph = GraphBuilder(store)
         self.lock = threading.Lock()
+
+    def forget_file(self, path: str) -> None:
+        """Drop a file and its embeddings together, or vectors.db keeps orphans."""
+        if self.vectors is not None:
+            self.vectors.delete_chunks(self.store.chunk_ids_for_path(path))
+        self.store.delete_file(path)
 
     @property
     def indexed_sha(self) -> str | None:
@@ -105,9 +119,9 @@ class Indexer:
         targets: list[SelectedFile] = []
         for change in self.mirror.changed_files(previous, sha):
             if change.old_path:
-                self.store.delete_file(change.old_path)
+                self.forget_file(change.old_path)
             if change.status == "D" or change.path not in wanted:
-                self.store.delete_file(change.path)
+                self.forget_file(change.path)
                 removed += 1
                 continue
             targets.append(wanted[change.path])
@@ -118,7 +132,7 @@ class Indexer:
 
     def drop_removed(self, current_paths: set[str]) -> None:
         for path in self.store.known_paths() - current_paths:
-            self.store.delete_file(path)
+            self.forget_file(path)
 
     def index_file(
         self, sha: str, selected: SelectedFile, known_hashes: dict[str, str]
@@ -132,6 +146,8 @@ class Indexer:
 
         source = content.decode("utf-8", errors="replace")
         parsed = self.parse(selected, content)
+        if self.vectors is not None:
+            self.vectors.delete_chunks(self.store.chunk_ids_for_path(selected.path))
         file_id = self.store.replace_file(
             selected.path, selected.lang, selected.blob_sha, content_hash, selected.size
         )

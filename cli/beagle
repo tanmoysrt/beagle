@@ -1,0 +1,523 @@
+#!/usr/bin/env python3
+"""Thin client for a Beagle server. Standard library only, no install needed."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+if sys.version_info < (3, 7):
+    sys.exit("beagle needs Python 3.7 or newer; this is %s" % sys.version.split()[0])
+
+SETTINGS = Path(os.environ.get("BEAGLE_SETTINGS", Path.home() / ".beagle" / "settings.json"))
+TIMEOUT = 30
+STREAM_TIMEOUT = 1800
+
+EXIT_OK = 0
+EXIT_FINDINGS = 1
+EXIT_USAGE = 2
+EXIT_API = 4
+EXIT_REPO = 6
+
+BADGE = {"P0": "\033[31m", "P1": "\033[33m", "P2": "\033[33m"}
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+
+class ClientError(Exception):
+    def __init__(self, message: str, code: int = EXIT_API):
+        super().__init__(message)
+        self.code = code
+
+
+# ---------------------------------------------------------------- settings
+
+
+def load_settings() -> dict:
+    if not SETTINGS.exists():
+        return {"servers": {}}
+    try:
+        return json.loads(SETTINGS.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ClientError(f"{SETTINGS} is not valid json: {exc}", EXIT_USAGE) from exc
+
+
+def save_settings(settings: dict) -> None:
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    SETTINGS.chmod(0o600)
+
+
+def pick_server(settings: dict, name: str | None) -> tuple[str, dict]:
+    servers = settings.get("servers", {})
+    if not servers:
+        raise ClientError("no server is configured. Run: beagle login <url>", EXIT_USAGE)
+    if name:
+        if name not in servers:
+            raise ClientError(f"no server named {name}", EXIT_USAGE)
+        return name, servers[name]
+
+    remote = git_remote()
+    if remote:
+        for server_name, entry in servers.items():
+            if entry.get("repo") and same_repo(entry["repo"], remote):
+                return server_name, entry
+
+    default = settings.get("default_server")
+    if default and default in servers:
+        return default, servers[default]
+    first = next(iter(servers))
+    return first, servers[first]
+
+
+def git_remote() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None if result.returncode == 0 else None
+
+
+def same_repo(left: str, right: str) -> bool:
+    return normalise_repo(left) == normalise_repo(right)
+
+
+def normalise_repo(url: str) -> str:
+    url = drop_suffix(url.strip(), ".git")
+    url = url.replace("git@github.com:", "github.com/")
+    for prefix in ("https://", "http://", "ssh://git@", "ssh://"):
+        url = drop_prefix(url, prefix)
+    return url.rstrip("/").lower()
+
+
+def drop_prefix(text: str, prefix: str) -> str:
+    return text[len(prefix):] if text.startswith(prefix) else text
+
+
+def drop_suffix(text: str, suffix: str) -> str:
+    return text[: -len(suffix)] if suffix and text.endswith(suffix) else text
+
+
+# ---------------------------------------------------------------- transport
+
+
+def request(server: dict, method: str, path: str, body: dict | None = None, stream: bool = False):
+    url = server["url"].rstrip("/") + path
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Accept": "application/json"}
+    if server.get("token"):
+        headers["Authorization"] = f"Bearer {server['token']}"
+    if data:
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        response = urllib.request.urlopen(req, timeout=STREAM_TIMEOUT if stream else TIMEOUT)
+    except urllib.error.HTTPError as exc:
+        raise ClientError(describe_http_error(exc, url)) from exc
+    except urllib.error.URLError as exc:
+        raise ClientError(f"cannot reach {server['url']}: {exc.reason}") from exc
+    if stream:
+        return response
+    payload = response.read().decode("utf-8", errors="replace")
+    if not payload:
+        return {}
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        return payload
+
+
+def describe_http_error(exc: urllib.error.HTTPError, url: str) -> str:
+    detail = exc.read().decode("utf-8", errors="replace")[:300]
+    try:
+        detail = json.loads(detail).get("detail", detail)
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    if exc.code == 401:
+        return "the server refused the token. Run: beagle login <url>"
+    if exc.code == 404:
+        return f"not found: {url}"
+    return f"the server answered {exc.code}: {detail}"
+
+
+# ---------------------------------------------------------------- commands
+
+
+def cmd_login(args, settings: dict) -> int:
+    url = args.url.rstrip("/")
+    server = {"url": url, "token": args.token or ""}
+    health = request(server, "GET", "/v1/healthz")
+    if not health.get("ok"):
+        raise ClientError(f"{url} did not report a healthy state")
+
+    status = request(server, "GET", "/v1/index/status")
+    repo = status.get("repo")
+    name = args.name or (drop_suffix(repo.rstrip("/").split("/")[-1], ".git") if repo else "default")
+
+    settings.setdefault("servers", {})[name] = {"url": url, "token": server["token"], "repo": repo}
+    settings.setdefault("default_server", name)
+    if args.author:
+        settings["author"] = args.author
+    save_settings(settings)
+
+    print(f"connected to {url}")
+    print(f"  name : {name}")
+    print(f"  repo : {repo or 'unknown'}")
+    print(f"  saved: {SETTINGS}")
+    return EXIT_OK
+
+
+def cmd_review(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    body = {"author": settings.get("author")}
+    if args.diff:
+        body["diff"] = read_diff(args.diff)
+    elif args.ref and args.ref.isdigit():
+        body["pr"] = int(args.ref)
+    else:
+        body["head"] = args.ref or current_branch()
+        if args.base:
+            body["base"] = args.base
+    if args.id:
+        body["review_id"] = args.id
+    if args.fresh:
+        body["fresh"] = True
+
+    started = request(server, "POST", "/v1/reviews", body)
+    review_id = started["review_id"]
+    if not pretty_output(args):
+        print(json.dumps(started))
+
+    findings = follow(server, review_id, pretty_output(args))
+    if args.wait is False:
+        return EXIT_OK
+    return EXIT_FINDINGS if findings else EXIT_OK
+
+
+def follow(server: dict, review_id: str, pretty: bool) -> int:
+    """Read the event stream. Returns the number of findings that fail the build."""
+    stream = request(server, "GET", f"/v1/reviews/{review_id}/stream", stream=True)
+    failing = 0
+    for raw in stream:
+        line = raw.decode("utf-8", errors="replace").strip()
+        if not line:
+            continue
+        if not pretty:
+            print(line, flush=True)
+        event = json.loads(line)
+        name = event.get("event")
+        if pretty:
+            render_event(event)
+        if name == "finding" and event.get("severity") in ("P0", "P1"):
+            failing += 1
+        if name in ("review_complete", "error", "superseded"):
+            break
+    return failing
+
+
+def render_event(event: dict) -> None:
+    name = event.get("event")
+    if name == "review_started":
+        print(f"{BOLD}reviewing {event.get('files', 0)} file(s){RESET}", flush=True)
+    elif name == "unit_started":
+        print(f"  · {event.get('title')}", flush=True)
+    elif name == "finding":
+        severity = event.get("severity", "")
+        colour = BADGE.get(severity, "")
+        where = ", ".join(event.get("locations") or [event.get("file", "")])
+        print(f"\n{colour}[{severity}]{RESET} {where}  ({event.get('category')}, "
+              f"confidence {event.get('confidence', 0):.2f})", flush=True)
+        print(f"      {event.get('title')}", flush=True)
+        for line in (event.get("body") or "").splitlines():
+            print(f"        {line}", flush=True)
+    elif name == "finding_suppressed":
+        print(f"  (suppressed: {event.get('title')})", flush=True)
+    elif name == "review_complete":
+        counts = ", ".join(f"{k} x{v}" for k, v in (event.get("counts") or {}).items() if v)
+        print(f"\n{BOLD}{event.get('verdict', '').upper()}{RESET}  {counts or 'no findings'}  ·  "
+              f"${event.get('cost_usd', 0):.4f}  ·  {event.get('duration_seconds', 0)}s", flush=True)
+        for note in event.get("degraded") or []:
+            print(f"degraded: {note}", flush=True)
+    elif name == "error":
+        print(f"error: {event.get('message')}", file=sys.stderr, flush=True)
+    elif name == "superseded":
+        print("a newer review replaced this one", file=sys.stderr, flush=True)
+
+
+def cmd_findings(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    result = request(server, "GET", f"/v1/reviews/{args.review_id}")
+    if not pretty_output(args):
+        print(json.dumps(result, indent=2))
+        return EXIT_OK
+
+    summary = result.get("summary", {})
+    print(f"{BOLD}{summary.get('verdict', '').upper()}{RESET}  "
+          f"confidence {summary.get('confidence', 0):.2f}")
+    if summary.get("description"):
+        print(f"\n{summary['description']}")
+    for finding in result.get("findings", []):
+        colour = BADGE.get(finding["severity"], "")
+        print(f"\n{colour}[{finding['severity']}]{RESET} {finding['file']}  "
+              f"({finding['category']})  id {finding['id']}")
+        print(f"      {finding['title']}")
+    suppressed = result.get("suppressed", [])
+    if suppressed:
+        print(f"\n{len(suppressed)} finding(s) hidden by the memory of the team")
+    return EXIT_OK
+
+
+def cmd_feedback(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    body = {"action": args.action, "reason": args.reason, "author": settings.get("author")}
+    result = request(server, "POST", f"/v1/findings/{args.finding_id}/feedback", body)
+    print(f"recorded {args.action} for {args.finding_id}")
+    if result.get("rule"):
+        print(f"added rule {result['rule']['id']}: {result['rule']['body']}")
+    return EXIT_OK
+
+
+def cmd_rules(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    if args.action == "add":
+        rule = request(server, "POST", "/v1/rules", {"body": args.text, "author": settings.get("author")})
+        print(f"added {rule['id']}: {rule['body']}")
+        return EXIT_OK
+    if args.action == "rm":
+        request(server, "DELETE", f"/v1/rules/{args.text}")
+        print(f"removed {args.text}")
+        return EXIT_OK
+
+    rules = request(server, "GET", "/v1/rules").get("rules", [])
+    if not pretty_output(args):
+        print(json.dumps(rules, indent=2))
+        return EXIT_OK
+    if not rules:
+        print("no rules yet. Add one: beagle rules add \"...\"")
+    for rule in rules:
+        print(f"  {rule['id']:<5} {rule['body']}  ({rule.get('author') or 'unknown'})")
+    return EXIT_OK
+
+
+def cmd_stats(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    stats = request(server, "GET", "/v1/stats")
+    if not pretty_output(args):
+        print(json.dumps(stats, indent=2))
+        return EXIT_OK
+
+    spend = stats.get("spend", {})
+    print(f"{BOLD}reviews{RESET} {stats.get('reviews', 0)}   "
+          f"{BOLD}findings{RESET} {stats.get('findings', 0)}   "
+          f"{BOLD}suppressed{RESET} {stats.get('suppressed', 0)}   "
+          f"{BOLD}rules{RESET} {stats.get('rules', 0)}")
+    print(f"spend ${spend.get('cost_usd', 0)} over {spend.get('calls', 0)} calls, "
+          f"cache hit rate {spend.get('cache_hit_rate', 0)}")
+    for row in stats.get("calibration", []):
+        print(f"  {row['category']:<14} false positives {row['false_positive_rate']:.0%}  "
+              f"correction x{row['confidence_correction']}")
+    return EXIT_OK
+
+
+def cmd_status(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    health = request(server, "GET", "/v1/healthz")
+    status = request(server, "GET", "/v1/index/status")
+    if not pretty_output(args):
+        print(json.dumps({"server": name, "health": health, "index": status}, indent=2))
+        return EXIT_OK
+    print(f"server   {name} at {server['url']}")
+    print(f"repo     {status.get('repo')}")
+    print(f"commit   {status.get('sha')}")
+    print(f"index    {status.get('files', 0)} files, {status.get('symbols', 0)} symbols, "
+          f"{status.get('chunks', 0)} chunks")
+    print(f"pending  {status.get('pending_embeddings', 0)} embeddings, "
+          f"{health.get('pending_jobs', 0)} jobs")
+    return EXIT_OK
+
+
+def cmd_passthrough(args, settings: dict) -> int:
+    name, server = pick_server(settings, args.server)
+    path = {"doctor": "/v1/doctor", "schema": "/v1/schema"}[args.command]
+    print(json.dumps(request(server, "GET", path), indent=2))
+    return EXIT_OK
+
+
+def cmd_guide(args, settings: dict) -> int:
+    """The client documents itself; the server documents its own interface."""
+    if args.topic in (None, "cli"):
+        print(client_guide())
+        if args.topic == "cli":
+            return EXIT_OK
+        print()
+    name, server = pick_server(settings, args.server)
+    path = "/v1/guide" + (f"?topic={urllib.parse.quote(args.topic)}" if args.topic else "")
+    print(request(server, "GET", path))
+    return EXIT_OK
+
+
+def client_guide() -> str:
+    lines = ["## Client commands", "", "| command | what it does |", "| --- | --- |"]
+    subparsers = [
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    if subparsers:
+        helps = {entry.dest: entry.help for entry in subparsers[0]._choices_actions}
+        for name, parser in subparsers[0].choices.items():
+            # the usage of a subcommand can wrap onto several lines
+            usage = " ".join(parser.format_usage().split())
+            tail = drop_prefix(usage, f"usage: beagle {name}")
+            for shared in ("[-h]", "[--server SERVER]", "[--json]"):
+                tail = tail.replace(shared, "")
+            tail = " ".join(tail.split())
+            command = f"beagle {name} {tail}".strip()
+            lines.append(f"| `{command}` | {helps.get(name, '')} |")
+    lines += [
+        "",
+        "Exit codes: 0 clean, 1 findings at P0 or P1, 2 usage or settings, "
+        "4 the server failed, 6 not a git repository.",
+        "",
+        "Output is coloured text in a terminal and json everywhere else. "
+        "Use --json to force json.",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_servers(args, settings: dict) -> int:
+    servers = settings.get("servers", {})
+    if not pretty_output(args):
+        print(json.dumps({"default": settings.get("default_server"), "servers": servers}, indent=2))
+        return EXIT_OK
+    if not servers:
+        print("no server is configured. Run: beagle login <url>")
+        return EXIT_OK
+    default = settings.get("default_server")
+    for name, entry in servers.items():
+        mark = "*" if name == default else " "
+        print(f" {mark} {name:<16} {entry['url']:<32} {entry.get('repo') or ''}")
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------- helpers
+
+
+def pretty_output(args) -> bool:
+    if getattr(args, "json", False):
+        return False
+    return sys.stdout.isatty()
+
+
+def read_diff(source: str) -> str:
+    return sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+
+
+def current_branch() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ClientError("git is not available, so no branch could be found", EXIT_REPO) from exc
+    if result.returncode != 0:
+        raise ClientError("this directory is not a git repository", EXIT_REPO)
+    return result.stdout.strip()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    # the shared options work before or after the subcommand
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--server", help="the name of a configured server")
+    common.add_argument("--json", action="store_true", help="write json, never colour")
+
+    parser = argparse.ArgumentParser(
+        prog="beagle", description="Talk to a Beagle server", parents=[common]
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    def add(name: str, help_text: str) -> argparse.ArgumentParser:
+        return subparsers.add_parser(name, help=help_text, parents=[common])
+
+    login = add("login", "save the address of a server")
+    login.add_argument("url")
+    login.add_argument("--token", help="the bearer token")
+    login.add_argument("--name", help="a name for this server")
+    login.add_argument("--author", help="your name, kept with your feedback")
+
+    review = add("review", "review a branch")
+    review.add_argument(
+        "ref",
+        nargs="?",
+        help="a branch, or a pull request number. The default is the current branch.",
+    )
+    review.add_argument("--base", help="the branch to compare against")
+    review.add_argument("--diff", help="review a diff from a file, or - for standard input")
+    review.add_argument("--id", help="a review identifier of your own")
+    review.add_argument("--fresh", action="store_true",
+                        help="review again from the start, without reusing a stored answer")
+    review.add_argument("--no-wait", dest="wait", action="store_false", help="do not read the stream")
+
+    add("findings", "show the result of a review").add_argument("review_id")
+
+    feedback = add("feedback", "teach Beagle about a finding")
+    feedback.add_argument("finding_id")
+    feedback.add_argument("action", choices=["accept", "false_positive", "dismiss", "style_rule"])
+    feedback.add_argument("reason", nargs="?", help="why. Necessary for a security finding.")
+
+    rules = add("rules", "show or change the conventions of the team")
+    rules.add_argument("action", nargs="?", choices=["add", "rm"])
+    rules.add_argument("text", nargs="?", help="the rule, or the identifier to remove")
+
+    add("stats", "show counts, costs and calibration")
+    add("status", "show the condition of the server and the index")
+    add("doctor", "show the configuration of the server")
+    add("schema", "show the versions of the interface")
+    add("servers", "list the servers that you saved")
+
+    add("guide", "print the guide of the server").add_argument("topic", nargs="?")
+    return parser
+
+
+COMMANDS = {
+    "login": cmd_login,
+    "review": cmd_review,
+    "findings": cmd_findings,
+    "feedback": cmd_feedback,
+    "rules": cmd_rules,
+    "stats": cmd_stats,
+    "status": cmd_status,
+    "doctor": cmd_passthrough,
+    "schema": cmd_passthrough,
+    "servers": cmd_servers,
+    "guide": cmd_guide,
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.command:
+        parser.print_help()
+        return EXIT_USAGE
+    try:
+        return COMMANDS[args.command](args, load_settings())
+    except ClientError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return exc.code
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -8,11 +8,19 @@ P5_CAP = 2
 P4_CAP = 3
 
 DEFAULT_CONFIG_PATH = Path("/data/config.toml")
-DEFAULT_DATA_DIR = Path("/data")
 MIRROR_DIRNAME = "repo.git"
 
 # Files above this size are never indexed or reviewed.
 MAX_FILE_BYTES = 512 * 1024
+
+# A review that has not finished by now is cut off and its partial results kept.
+REVIEW_DEADLINE_SECONDS = 30 * 60
+
+# Reviews cost money, so a failed one is reported rather than retried.
+JOB_ATTEMPT_LIMITS = {"review": 1, "index": 3, "github_review": 1, "github_comment": 3}
+
+# The call log holds whole prompts and responses, so it is trimmed rather than kept forever.
+LLM_LOG_RETENTION_DAYS = 60
 
 # Everything not matching these globs counts as application code, where security
 # findings are forced to P0. Elsewhere the model's own severity stands.

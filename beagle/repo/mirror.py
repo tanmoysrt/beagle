@@ -8,7 +8,6 @@ from pathlib import Path
 from ..errors import RepoError
 
 FETCH_ALL = "+refs/heads/*:refs/heads/*"
-PR_REF = "+refs/pull/{number}/head:refs/beagle/pr/{number}"
 
 
 @dataclass(frozen=True)
@@ -55,8 +54,10 @@ class Mirror:
         self.run(["fetch", "--prune", "origin", refspec])
 
     def fetch_pr(self, number: int) -> str:
-        self.run(["fetch", "origin", PR_REF.format(number=number)])
-        return self.resolve(f"refs/beagle/pr/{number}")
+        """Fetch a pull request head, which may live in a fork, and return its sha."""
+        local = f"refs/beagle/pr/{number}"
+        self.fetch(f"+refs/pull/{number}/head:{local}")
+        return self.resolve(local)
 
     def resolve(self, ref: str) -> str:
         return self.run(["rev-parse", f"{ref}^{{commit}}"]).strip()
@@ -67,9 +68,6 @@ class Mirror:
             return True
         except RepoError:
             return False
-
-    def merge_base(self, base: str, head: str) -> str:
-        return self.run(["merge-base", base, head]).strip()
 
     def diff(self, base: str, head: str, context_lines: int = 3) -> str:
         """Diff of what head adds on top of base, the way a pull request reads."""

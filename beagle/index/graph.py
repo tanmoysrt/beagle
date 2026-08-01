@@ -20,12 +20,8 @@ class ResolvedEdge:
 
 
 class GraphBuilder:
-    """Turns call sites into graph edges.
-
-    Resolution is deliberately cheap: same file first, then files this one
-    imports, then a unique repo-wide name. Anything ambiguous stays a text edge,
-    which still tells us something about blast radius.
-    """
+    """Turns call sites into graph edges: same file, then imports, then a unique
+    repo-wide name. Anything ambiguous stays a text edge."""
 
     def __init__(self, store: IndexStore):
         self.store = store

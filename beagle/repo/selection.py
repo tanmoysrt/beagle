@@ -59,12 +59,8 @@ class Selection:
 
 
 class FileSelector:
-    """Decides what Beagle is allowed to look at.
-
-    Files absent from the tree are already gitignored, so the remaining rules
-    are .beagleignore, the operator's own globs, and size or binary limits.
-    Any ignore outcome is final.
-    """
+    """Decides what Beagle may look at. Anything absent from the tree is already
+    gitignored, leaving .beagleignore, operator globs, and size or binary limits."""
 
     def __init__(self, mirror: Mirror, ignore_globs: list[str] | None = None, max_bytes: int = MAX_FILE_BYTES):
         self.mirror = mirror

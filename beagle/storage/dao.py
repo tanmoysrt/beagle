@@ -1,20 +1,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Sequence
 
 from .db import Database
 from .migrations import utc_now
-
-
-@dataclass(frozen=True)
-class FileRow:
-    id: int
-    path: str
-    lang: str | None
-    blob_sha: str
-    content_hash: str
 
 
 class IndexStore:
@@ -22,12 +13,6 @@ class IndexStore:
 
     def __init__(self, core: Database):
         self.core = core
-
-    def file_by_path(self, path: str) -> FileRow | None:
-        row = self.core.one(
-            "select id, path, lang, blob_sha, content_hash from files where path = ?", (path,)
-        )
-        return FileRow(*row) if row else None
 
     def known_hashes(self) -> dict[str, str]:
         return {row[0]: row[1] for row in self.core.query("select path, content_hash from files")}
@@ -45,6 +30,9 @@ class IndexStore:
                 (path, lang, blob_sha, content_hash, size, utc_now()),
             )
             return int(cursor.lastrowid)
+
+    def chunk_ids_for_path(self, path: str) -> list[int]:
+        return [row[0] for row in self.core.query("select id from chunks where path = ?", (path,))]
 
     def delete_file(self, path: str) -> None:
         self.core.execute("delete from files where path = ?", (path,))
@@ -251,6 +239,25 @@ class CallLog:
                 utc_now(),
             ),
         )
+
+    def find(self, request_hash: str, prompt_set_version: str | None) -> dict[str, Any] | None:
+        """The answer to an identical question, if one was asked and answered before."""
+        row = self.llm_log.one(
+            "select response_json from llm_calls where request_hash = ?"
+            " and prompt_set_version is ? and ok = 1 and response_json is not null"
+            " order by id desc limit 1",
+            (request_hash, prompt_set_version),
+        )
+        return json.loads(row[0]) if row else None
+
+    def trim(self, days: int) -> int:
+        """Drop old calls; the log holds whole prompts and responses."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        cursor = self.llm_log.execute("delete from llm_calls where created_at < ?", (cutoff,))
+        removed = cursor.rowcount or 0
+        if removed:
+            self.llm_log.execute("vacuum")
+        return removed
 
     def spend(self, review_id: str) -> dict[str, float]:
         row = self.llm_log.one(
