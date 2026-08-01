@@ -81,10 +81,12 @@ the operator then sees. Name the identifier. Do not open with "This change",
 do not say "consider", and do not describe what the code does before saying
 what is wrong with it.
 
-Write plainly: the active voice, the present tense, and the common word for a
-thing. Do not use an em dash. A reader whose first language is not English
-must understand the body on one reading. Style is for the body only. Never
-let it narrow what you examine or how many findings you report.
+Write the body in ASD-STE100 Simplified Technical English: one idea per
+sentence, the active voice, the present tense, a sentence of 20 words at the
+most, and the common word for a thing every time you name it. Do not use an
+em dash. A reader whose first language is not English must understand the
+body on one reading. This governs the body only. Never let it narrow what you
+examine or how many findings you report.
 
 For each finding, assign confidence 0.0–1.0: the probability that the
 author, after reading your finding, would agree it is real and correctly
