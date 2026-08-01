@@ -15,7 +15,7 @@ from ..pipeline.models import (
     verdict_for,
 )
 from ..pipeline.runner import ReviewResult
-from ..report import BADGES, cost_line, notes_block, verdict_block
+from ..report import BADGES, notes_block, usage_line, verdict_block
 from .client import GithubClient
 from .events import DEFAULT_MENTION, FINDING_MARKER, RESOLVED_MARKER, SUMMARY_MARKER
 
@@ -53,6 +53,11 @@ class ReviewPoster:
     def fail_on(self) -> Severity:
         return self.service.config.review.fail_on
 
+    @property
+    def model(self) -> str:
+        """The model that read the code, so a reader knows what judged it."""
+        return self.service.config.llm.models.reasoning
+
     def post(
         self, number: int, head_sha: str, result: ReviewResult, last_verdict: str | None = None
     ) -> dict:
@@ -76,6 +81,7 @@ class ReviewPoster:
             resolution_lines(closing, withdrawn, head_sha),
             self.mention,
             self.commit_note(head_sha),
+            self.model,
         ))
         # A review with no line comment only repeats the summary in another place.
         # The one exception is asking for changes, which is a state, not a message.
@@ -213,7 +219,7 @@ class ReviewPoster:
         summary.counts = count_by_severity(findings)
         summary.verdict = verdict_for(findings, self.fail_on)
         self.write_summary(number, render_summary(
-            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha)
+            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha), self.model
         ))
 
 
@@ -338,6 +344,7 @@ def render_summary(
     resolved: list[str],
     mention: str,
     commit: str = "",
+    model: str = "",
 ) -> str:
     lines = verdict_block(summary)
 
@@ -353,8 +360,11 @@ def render_summary(
         lines += ["", "**Settled since the last review:**", ""] + resolved
 
     lines += notes_block(summary)
-    footer = [f"Reviewed {commit}"] if commit else []
-    footer.append(cost_line(summary))
-    footer.append(f"`@{mention} review` to run again")
-    lines += ["", f"<sub>{' · '.join(footer)}</sub>", SUMMARY_MARKER]
+    if commit:
+        lines += ["", f"Reviewed up to {commit}"]
+    lines += [
+        "",
+        f"<sub>{usage_line(summary, model)} · `@{mention} review` to run again</sub>",
+        SUMMARY_MARKER,
+    ]
     return "\n".join(lines)

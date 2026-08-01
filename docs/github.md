@@ -65,7 +65,7 @@ The line comments and the state of the review go out together in one review subm
 
 The summary starts with a confidence score out of 5. Then one sentence tells you if the change is safe to merge, or what to correct first. One or two sentences tell you why. A short list names the files that need a second look. There is no table and no list of counts.
 
-The last line of the summary gives the commit that Beagle read: the short hash and the subject of the message. So you know which push the review speaks about.
+Below the summary, a line gives the commit that Beagle read: the short hash and the subject of the message. So you know which push the review speaks about. Under it, in small text, is the model that read the code and the number of tokens it used.
 
 Each line comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
 
