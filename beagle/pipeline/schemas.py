@@ -139,7 +139,7 @@ SUMMARY_SCHEMA = {
         "attention": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "`path — what needs attention there`, at most two entries",
+            "description": "`path: what needs attention there`, at most two entries. Use a colon, never a dash.",
         },
         "notes": {"type": "array", "items": {"type": "string"}},
     },
