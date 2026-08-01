@@ -1,19 +1,43 @@
 # Beagle
 
-Beagle is an AI code reviewer. It reads a diff and it writes findings. One server gives service to one repository.
+Beagle reads a pull request and tells you what is wrong with it.
 
-Beagle keeps an index of the code and a memory of the feedback of the team. It gives a level from P0 to P5 to each finding. It reports few findings, because a reviewer that reports too much is not useful.
+One server gives service to one repository. Beagle keeps an index of the code, so it sees the callers of what you change, in every language. It keeps a memory of what your team told it, so it does not raise the same wrong finding twice.
 
-## How you use it
+Beagle reports few findings. A reviewer that says too much gets ignored.
 
-| Way | What Beagle does | Document |
-| --- | --- | --- |
-| Pull requests | Beagle reviews each push and writes comments. A person answers with `@beagle ...`. | [docs/github.md](docs/github.md) |
-| Terminal, or CI | You ask for a review of a branch or of a diff. The client writes JSON in a pipeline. | [cli/README.md](cli/README.md) |
+## What you get
 
-You do not call the HTTP interface yourself. The client and the GitHub interface do it for you.
+Beagle writes one comment with the summary and changes that same comment from then on. It writes one line comment for each finding. So a round of review gives you one notification.
 
-## The client
+```
+### Confidence Score: 3/5
+
+Safe to merge; the validation change is consistent and covered by new tests.
+
+The new validators add the empty check and the private address check in one
+place, and the tests exercise both paths.
+
+pilot/config/llm.py: confirm the empty base check accepts a real empty default
+
+Reviewed up to `726a88c` fix: harden the setup wizard and the install script
+```
+
+Each finding has a level from P0 (do not merge) to P5 (nit). Each one also holds a block you can copy into your own coding tool.
+
+## Talk to it
+
+Write the name of the account, then what you want.
+
+| You write | Beagle does |
+| --- | --- |
+| `@beagle review` | Reads the pull request again |
+| `@beagle explain` | Gives more detail about the finding in this thread |
+| Anything else, in your own words | Reads your words and learns from them |
+
+There is no other command to remember. Tell it that a finding is wrong and it holds back findings like it, and closes the thread. Tell it a convention of your team and it follows the convention.
+
+## Use it in a terminal
 
 The client is one file. It needs Python 3.7 and nothing else.
 
@@ -25,9 +49,7 @@ beagle review
 
 Refer to [cli/README.md](cli/README.md) for each command, the exit codes, and the use in CI.
 
-## The server
-
-Write the configuration first:
+## Run the server
 
 ```bash
 mkdir -p data
@@ -35,17 +57,23 @@ curl -fsSL https://raw.githubusercontent.com/tanmoysrt/beagle/main/data/config.e
 chmod 600 data/config.toml
 ```
 
-Write your two API keys and the URL of your repository in that file. Then start the container:
+Put two API keys and the address of your repository in that file. Then start the container:
 
 ```bash
 docker run -d --name beagle -p 8080:8080 -v "$PWD/data:/data" ghcr.io/tanmoysrt/beagle
 ```
 
-Refer to [docs/install.md](docs/install.md) for the other procedures. Refer to [docs/configuration.md](docs/configuration.md) for each key.
+Beagle needs two models. The example file gives an open pair that costs about one sixth of Claude and finds almost as much. [docs/configuration.md](docs/configuration.md) has the measurement and each key.
 
-## Documentation
+## Documents
 
-[docs/README.md](docs/README.md) lists all the documents. [docs/architecture.md](docs/architecture.md) shows the parts, the folders, and the flows.
+| Document | Content |
+| --- | --- |
+| [docs/github.md](docs/github.md) | Pull requests: what Beagle writes, and what you can write |
+| [docs/install.md](docs/install.md) | How to install the server |
+| [docs/configuration.md](docs/configuration.md) | Each key, and which models to use |
+| [docs/architecture.md](docs/architecture.md) | The parts, the folders, and the flows |
+| [docs/README.md](docs/README.md) | All the documents |
 
 ## License
 
