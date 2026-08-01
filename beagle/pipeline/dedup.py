@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..config import ReviewCfg, Severity
-from ..constants import P4_CAP, P5_CAP
+from ..constants import P3_CAP, P4_CAP, P5_CAP
 from ..llm.client import Budget, LLMClient
 from ..prompts.loader import PromptSet, dedup_values
 from .models import Finding, normalize
@@ -103,7 +103,7 @@ def collapse_identical(findings: list[Finding]) -> list[Finding]:
 
 
 def apply_level_caps(findings: list[Finding]) -> list[Finding]:
-    caps = {Severity.P5: P5_CAP, Severity.P4: P4_CAP}
+    caps = {Severity.P5: P5_CAP, Severity.P4: P4_CAP, Severity.P3: P3_CAP}
     ranked = sorted(findings, key=lambda item: (item.severity.rank, -item.confidence))
     kept, counts = [], {level: 0 for level in caps}
     for finding in ranked:

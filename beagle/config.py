@@ -90,7 +90,7 @@ class GithubCfg(Section):
 class ReviewCfg(Section):
     min_severity: Severity = Severity.P5
     fail_on: Severity = Severity.P1
-    max_findings: int = Field(default=12, ge=1)
+    max_findings: int = Field(default=8, ge=1)
     categories: list[str] = Field(
         default_factory=lambda: [
             "bug",

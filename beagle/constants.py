@@ -4,8 +4,9 @@ SCHEMA_VERSION = 1  # bumped on breaking NDJSON/API changes
 PROMPT_SET_VERSION = "v1"
 
 # Per-level caps enforced by the merge pass. Not configurable by design.
-P5_CAP = 2
-P4_CAP = 3
+P5_CAP = 1
+P4_CAP = 2
+P3_CAP = 3
 
 DEFAULT_CONFIG_PATH = Path("/data/config.toml")
 MIRROR_DIRNAME = "repo.git"

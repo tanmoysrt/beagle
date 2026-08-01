@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..config import Config, Section
-from ..constants import P4_CAP, P5_CAP, SCHEMA_VERSION
+from ..constants import P3_CAP, P4_CAP, P5_CAP, SCHEMA_VERSION
 from ..github.events import DEFAULT_MENTION
 from ..pipeline.schemas import SEVERITIES
 
@@ -26,7 +26,7 @@ def header() -> str:
         "Beagle reviews a diff and returns findings graded P0 (must not merge) to P5 (nit).\n"
         f"Severity levels: {', '.join(SEVERITIES)}. Security findings in application code are "
         "always P0 and are exempt from the finding caps.\n"
-        f"At most {P5_CAP} P5 and {P4_CAP} P4 findings survive the merge pass."
+        f"At most {P3_CAP} P3, {P4_CAP} P4 and {P5_CAP} P5 findings survive the merge pass."
     )
 
 

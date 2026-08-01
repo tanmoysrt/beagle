@@ -104,7 +104,7 @@ Security findings are also an exception to three limits:
 
 - The `min_severity` limit does not remove them.
 - The `max_findings` limit does not remove them.
-- The P4 and P5 limits do not apply to them.
+- The P3, P4 and P5 limits do not apply to them.
 
 The strong model always examines a security finding a second time.
 
@@ -116,7 +116,8 @@ Too many findings make a reviewer useless. Beagle uses these controls:
 - The model must not report a problem that a linter finds. Examples are the sequence of imports and the type of quotation mark.
 - The model must judge the change, not the file. Behaviour from before the change is outside the scope.
 - The same problem in 6 places is 1 finding with 6 locations.
-- One review contains 2 P5 findings at the most, and 3 P4 findings at the most.
+- One review contains 3 P3 findings, 2 P4 findings, and 1 P5 finding at the most.
+- A `test_gap` finding is always P4, so a missing test is a nit.
 - One review contains 12 findings at the most. The summary counts the rest.
 - The memory hides the findings that the team dismissed before.
 

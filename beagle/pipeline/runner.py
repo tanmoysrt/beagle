@@ -309,9 +309,9 @@ class ReviewRunner:
 
 
 def demote_advice(finding: Finding) -> Finding:
-    """A missing test never blocks a merge, whatever severity the model chose."""
-    if finding.category == "test_gap" and finding.severity.at_least(Severity.P2):
-        finding.severity = Severity.P3
+    """A missing test or a missing document is a nit, whatever severity the model chose."""
+    if finding.category == "test_gap" and finding.severity.at_least(Severity.P4):
+        finding.severity = Severity.P4
     return finding
 
 
