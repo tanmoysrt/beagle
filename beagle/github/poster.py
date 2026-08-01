@@ -173,8 +173,13 @@ class ReviewPoster:
         return placed, resolved
 
     def anchor(self, number: int, findings: list[Finding]) -> tuple[list[dict], list[Finding]]:
-        """A batched review is rejected whole, so an unanchorable finding must be
-        moved to the summary before the request goes out, not after it fails."""
+        """A batched review is rejected whole, so a finding GitHub will not take
+        must move to the summary before the request goes out, not after it fails.
+
+        A finding on a file in the diff always gets a comment. If its line is not
+        one GitHub will take, the comment goes on the file instead of on a line.
+        Only a finding on a file the diff does not touch has nowhere to go.
+        """
         if not self.inline:
             return [], list(findings)
         try:
@@ -185,11 +190,10 @@ class ReviewPoster:
 
         comments, unplaced = [], []
         for finding in findings:
-            payload = comment_payload(finding, commentable.get(finding.file, set()))
-            if payload is None:
+            if finding.file not in commentable:
                 unplaced.append(finding)
-            else:
-                comments.append(payload)
+                continue
+            comments.append(comment_payload(finding, commentable[finding.file]))
         return comments, unplaced
 
     def submit(
@@ -227,18 +231,15 @@ class ReviewPoster:
         ))
 
 
-def comment_payload(finding: Finding, commentable: set[int]) -> dict | None:
+def comment_payload(finding: Finding, commentable: set[int]) -> dict:
+    """A line comment when the line is in the diff, otherwise a comment on the file."""
+    body = finding_body(finding, inline=True)
     line = finding.line_end or finding.line_start
-    if not line or line not in commentable:
-        return None
-    payload = {
-        "body": finding_body(finding, inline=True),
-        "path": finding.file,
-        "side": "RIGHT",
-        "line": line,
-    }
+    if not line or line <= 0 or line not in commentable:
+        return {"body": body, "path": finding.file, "subject_type": "file"}
+    payload = {"body": body, "path": finding.file, "side": "RIGHT", "line": line}
     start = finding.line_start
-    if start and start < line and start in commentable:
+    if start and 0 < start < line and start in commentable:
         payload["start_line"] = start
         payload["start_side"] = "RIGHT"
     return payload
@@ -356,7 +357,7 @@ def render_summary(
     if unplaced:
         lines += [
             "",
-            "**These are not on a changed line, so GitHub takes no comment there:**",
+            "**These are about files this change does not touch:**",
             "",
         ]
         for finding in unplaced:
