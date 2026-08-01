@@ -120,7 +120,7 @@ class Poller:
     def dispatch(self, number: int, comments: list[dict], kind: str, mark: int) -> None:
         """Queue every comment for Beagle that is newer than the watermark."""
         for comment in comments:
-            if comment["id"] <= mark or command_text(comment.get("body") or "") is None:
+            if comment["id"] <= mark or command_text(comment.get("body") or "", self.cfg.mention) is None:
                 continue
             self.enqueue(
                 "github_comment",

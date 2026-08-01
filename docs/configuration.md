@@ -106,6 +106,7 @@ Beagle limits P5 findings to 2 and P4 findings to 3 in one review. These limits 
 | `token` | none | A fine-grained token with Contents: read and Pull requests: write |
 | `repo` | none | The repository, as `owner/name` |
 | `api_url` | `"https://api.github.com"` | Change this for GitHub Enterprise |
+| `mention` | `"beagle"` | The name of the account, without the `@`. People write to this name. |
 | `mode` | `"poll"` | `poll` needs no setup. `webhook` is faster. |
 | `poll_interval_seconds` | `60` | The time between two questions to GitHub |
 | `webhook_secret` | none | The secret of the webhook. Necessary for `webhook`. |

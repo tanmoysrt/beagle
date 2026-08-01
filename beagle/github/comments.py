@@ -5,7 +5,7 @@ import re
 
 from ..pipeline.schemas import COMMENT_SCHEMA, OUTPUT_INSTRUCTIONS
 from .client import GithubClient
-from .events import FINDING_MARKER, Comment, command_text
+from .events import DEFAULT_MENTION, FINDING_MARKER, Comment, command_text
 
 log = logging.getLogger("beagle.github.comments")
 
@@ -42,22 +42,54 @@ class CommentRouter:
     reaches the review prompt of this or any other pull request.
     """
 
-    def __init__(self, github: GithubClient, service):
+    def __init__(self, github: GithubClient, sync, service, mention: str = DEFAULT_MENTION):
         self.github = github
+        self.sync = sync
         self.service = service
+        self.mention = mention
 
     def handle(self, comment: Comment) -> None:
-        text = command_text(comment.body)
+        text = command_text(comment.body, self.mention)
         if text is None:
             return
+        self.ack(comment)
         fingerprint = self.thread_fingerprint(comment)
         action, argument = parse(text)
         if action is None:
             action, argument = self.classify(text, fingerprint)
         if action is None:
             log.info("ignoring comment %s on #%s", comment.id, comment.number)
+            self.done(comment.number)
             return
         self.act(comment, fingerprint, action, argument)
+        # a review runs as its own job and reports when it posts
+        if action not in ("review", "review_deep"):
+            self.done(comment.number)
+
+    def ack(self, comment: Comment) -> None:
+        """A thumb on the comment Beagle read, an eye on the pull request while it works."""
+        kind = "issues" if comment.kind == "issue" else "pulls"
+        self.react(f"/{kind}/comments/{comment.id}", "+1")
+        eyes = self.react(f"/issues/{comment.number}", "eyes")
+        if eyes:
+            self.sync.update_pr(comment.number, eyes=eyes)
+
+    def done(self, number: int) -> None:
+        eyes = self.sync.pr(number).get("eyes")
+        if eyes:
+            try:
+                self.github.unreact(f"/issues/{number}", eyes)
+            except Exception as exc:
+                log.warning("could not remove the eye on #%s: %s", number, exc)
+            self.sync.update_pr(number, eyes=None)
+            self.react(f"/issues/{number}", "+1")
+
+    def react(self, path: str, content: str) -> int | None:
+        try:
+            return self.github.react(path, content)
+        except Exception as exc:
+            log.warning("could not react %s on %s: %s", content, path, exc)
+            return None
 
     def act(self, comment: Comment, fingerprint: str | None, action: str, argument: str) -> None:
         if action in ("false_positive", "dismiss"):

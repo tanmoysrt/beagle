@@ -77,6 +77,12 @@ class GithubClient:
             "POST", f"/pulls/{number}/comments/{comment_id}/replies", json={"body": body}
         )
 
+    def react(self, path: str, content: str) -> int | None:
+        return self.call("POST", f"{path}/reactions", json={"content": content}).get("id")
+
+    def unreact(self, path: str, reaction_id: int) -> None:
+        self.call("DELETE", f"{path}/reactions/{reaction_id}")
+
     def submit_review(self, number: int, event: str, body: str) -> dict:
         return self.call("POST", f"/pulls/{number}/reviews", json={"event": event, "body": body})
 

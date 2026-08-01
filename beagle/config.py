@@ -72,6 +72,8 @@ class EmbeddingsCfg(Section):
 class GithubCfg(Section):
     token: str | None = None
     repo: str | None = None
+    # the account people write to, without the @
+    mention: str = "beagle"
     api_url: str = "https://api.github.com"
     mode: Literal["poll", "webhook"] = "poll"
     poll_interval_seconds: int = Field(default=60, ge=10)

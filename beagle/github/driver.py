@@ -29,7 +29,7 @@ class GithubDriver:
         self.client = GithubClient(cfg)
         self.sync = SyncState(service.storage.core)
         self.poster = ReviewPoster(self.client, cfg.post_style)
-        self.comments = CommentRouter(self.client, service)
+        self.comments = CommentRouter(self.client, self.sync, service, cfg.mention)
         self.poller = (
             Poller(self.client, self.sync, cfg, service.enqueue) if cfg.mode == "poll" else None
         )
@@ -80,6 +80,7 @@ class GithubDriver:
             verdict=result.summary.verdict,
             posted_at=utc_now(),
         )
+        self.comments.done(number)
         log.info("posted review of #%s: %s", number, posted)
         return posted
 

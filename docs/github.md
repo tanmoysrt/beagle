@@ -103,7 +103,9 @@ To get only the summary, set `post_style = "summary_only"`.
 
 ## What you can write
 
-Start a comment with `@beagle`.
+Write the name of the account, then the command. The default name is `beagle`. Set `github.mention` to the name of your account, for example `beagle-app`. The command must be the first word after the name.
+
+When Beagle reads your comment, it puts a 👍 on that comment and a 👀 on the pull request. When the work is complete, the 👀 becomes a 👍. So you know that Beagle got the message and that it is busy.
 
 | Command | Result |
 | --- | --- |

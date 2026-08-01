@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import re
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 
 from ..config import GithubCfg
 
@@ -11,7 +12,7 @@ MARKER = "<!-- beagle:"
 SUMMARY_MARKER = "<!-- beagle:summary -->"
 FINDING_MARKER = re.compile(r"<!-- beagle:finding:([0-9a-f]{32}) -->")
 RESOLVED_MARKER = re.compile(r"<!-- beagle:resolved:([0-9a-f]{32}) -->")
-MENTION = re.compile(r"@beagle\b", re.I)
+DEFAULT_MENTION = "beagle"
 
 
 @dataclass
@@ -29,11 +30,16 @@ class Comment:
         return asdict(self)
 
 
-def command_text(body: str) -> str | None:
+@lru_cache(maxsize=8)
+def mention_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(rf"@{re.escape(name)}(?![\w-])", re.I)
+
+
+def command_text(body: str, mention: str = DEFAULT_MENTION) -> str | None:
     """What the author asked of Beagle, or None if the comment is not for Beagle."""
     if MARKER in body:
         return None
-    found = MENTION.search(body)
+    found = mention_pattern(mention).search(body)
     return body[found.end():].strip() if found else None
 
 
@@ -69,20 +75,20 @@ def job_for(event: str, payload: dict, cfg: GithubCfg) -> tuple[str, dict] | Non
         issue = payload.get("issue") or {}
         if payload.get("action") != "created" or "pull_request" not in issue:
             return None
-        return comment_job(issue.get("number"), payload.get("comment") or {}, "issue")
+        return comment_job(issue.get("number"), payload.get("comment") or {}, "issue", cfg.mention)
 
     if event == "pull_request_review_comment":
         if payload.get("action") != "created":
             return None
         pull = payload.get("pull_request") or {}
-        return comment_job(pull.get("number"), payload.get("comment") or {}, "review")
+        return comment_job(pull.get("number"), payload.get("comment") or {}, "review", cfg.mention)
 
     return None
 
 
-def comment_job(number: int | None, raw: dict, kind: str) -> tuple[str, dict] | None:
+def comment_job(number: int | None, raw: dict, kind: str, mention: str) -> tuple[str, dict] | None:
     body = raw.get("body") or ""
-    if number is None or command_text(body) is None:
+    if number is None or command_text(body, mention) is None:
         return None
     comment = Comment(
         number=number,
