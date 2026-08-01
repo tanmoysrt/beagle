@@ -198,8 +198,7 @@ def read_entries(data: dict[str, Any], key: str) -> tuple[list[dict], str | None
 OUTPUT_INSTRUCTIONS = {
     "reviewer": (
         "Return your findings by calling the `report_findings` tool exactly once, "
-        "with one entry per finding. Return an empty list if the change is sound. "
-        "Never answer in prose."
+        "with one entry per finding, worst first. Never answer in prose."
     ),
     "plan": "Return the units by calling the `plan_units` tool exactly once.",
     "dedup": (

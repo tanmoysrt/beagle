@@ -39,13 +39,13 @@ SEVERITY_SCALE = """SEVERITY SCALE — use these levels exactly:
 P0  Must not merge. Real breakage or exposure.
     security vulnerability in app code, data loss, crash on main path, secret in code
 P1  Should fix before merge. Likely bug or serious gap.
-    logic error, race condition, unhandled error path, breaking API change, missing critical test
+    logic error, race condition, unhandled error path, caller broken by an API change
 P2  Should fix soon. Real problem, not immediately damaging.
-    performance issue on a hot path, fragile pattern likely to break, notable test gap
+    performance issue on a hot path, fragile pattern likely to break
 P3  Worth fixing, author's call on timing.
     misleading naming on public surface, moderate readability or structure issue
 P4  Minor improvement.
-    small refactor opportunity, non-critical edge-case hardening
+    small refactor opportunity, non-critical edge-case hardening, any missing test
 P5  Nit or polish. Reported sparingly.
     minor style preference, tiny readability tweak"""
 
