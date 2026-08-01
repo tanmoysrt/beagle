@@ -3,8 +3,17 @@ from __future__ import annotations
 import logging
 import re
 
+import json
+
+from ..config import Severity
 from ..errors import GithubError
-from ..pipeline.models import Finding
+from ..pipeline.models import (
+    Finding,
+    ReviewSummary,
+    count_by_severity,
+    score_for,
+    verdict_for,
+)
 from ..pipeline.runner import ReviewResult
 from ..report import BADGES, cost_line, notes_block, verdict_block
 from .client import GithubClient
@@ -27,12 +36,20 @@ class ReviewPoster:
     def __init__(
         self,
         github: GithubClient,
+        sync,
+        service,
         style: str = "inline_plus_summary",
         mention: str = DEFAULT_MENTION,
     ):
         self.github = github
+        self.sync = sync
+        self.service = service
         self.inline = style == "inline_plus_summary"
         self.mention = mention
+
+    @property
+    def fail_on(self) -> Severity:
+        return self.service.config.review.fail_on
 
     def post(
         self, number: int, head_sha: str, result: ReviewResult, last_verdict: str | None = None
@@ -51,11 +68,50 @@ class ReviewPoster:
         }
         withdrawn = {item.fingerprint for item in result.suppressed + result.rejected}
 
-        body = summary_body(
-            result, unplaced, resolution_lines(closing, withdrawn, head_sha), self.mention
+        body = render_summary(
+            result.summary.to_dict(),
+            unplaced,
+            resolution_lines(closing, withdrawn, head_sha),
+            self.mention,
+            self.commit_note(head_sha),
         )
         self.submit(number, head_sha, result.summary.verdict, body, comments)
         return {"added": len(comments), "resolved": len(closing), "in_summary": len(unplaced)}
+
+    def summary_state(self, number: int):
+        """The summary as posted, and the findings that still stand."""
+        core = self.service.storage.core
+        row = core.one(
+            "select summary_json, head_sha from reviews where id = ?", (f"pr-{number}",)
+        )
+        if row is None or not row[0]:
+            return None
+        summary = ReviewSummary(**{
+            key: value for key, value in json.loads(row[0]).items()
+            if key in ReviewSummary.__dataclass_fields__
+        })
+        rows = core.query(
+            "select severity, category from findings where review_id = ? and status = 'open'",
+            (f"pr-{number}",),
+        )
+        findings = [
+            Finding(file="", category=item[1], severity=Severity(item[0]), title="", body="")
+            for item in rows
+        ]
+        return summary, findings, row[1]
+
+    def commit_note(self, head_sha: str | None) -> str:
+        """The commit the review looked at, named so a reader can place it."""
+        if not head_sha:
+            return ""
+        try:
+            subject = self.service.mirror.run(
+                ["log", "-1", "--format=%s", head_sha]
+            ).strip().splitlines()[0]
+        except Exception:
+            subject = ""
+        short = head_sha[:7]
+        return f"`{short}` {subject}" if subject else f"`{short}`"
 
     def scan(self, number: int) -> tuple[dict[str, dict], set[str]]:
         """Beagle's own finding comments, and the ones already called resolved."""
@@ -94,16 +150,40 @@ class ReviewPoster:
         self, number: int, head_sha: str, verdict: str, body: str, comments: list[dict]
     ) -> None:
         event = "REQUEST_CHANGES" if verdict == "request_changes" else "COMMENT"
-        try:
-            self.github.submit_review(number, event, body, comments, head_sha)
+        for attempt in (event, "COMMENT"):
+            try:
+                posted = self.github.submit_review(number, attempt, body, comments, head_sha)
+                self.sync.update_pr(number, review_id=posted.get("id"))
+                return
+            except GithubError as exc:
+                # GitHub refuses REQUEST_CHANGES on a pull request the token's own account opened.
+                log.warning("review on #%s rejected as %s: %s", number, attempt, exc)
+                comments = []  # a rejected batch must not post twice
+
+    def refresh(self, number: int) -> None:
+        """Rewrite the summary in place after a finding was withdrawn.
+
+        The score and the counts described the review as it was posted. Once the
+        author rejects a finding, that summary is wrong, and a new review would
+        be a second notification for a correction.
+        """
+        review_id = self.sync.pr(number).get("review_id")
+        if not review_id:
             return
-        except GithubError as exc:
-            # GitHub refuses REQUEST_CHANGES on a pull request the token's own account opened.
-            log.warning("review on #%s rejected as %s: %s", number, event, exc)
+        state = self.summary_state(number)
+        if state is None:
+            return
+        summary, findings, head_sha = state
+        summary.score = score_for(findings, summary.coverage)
+        summary.counts = count_by_severity(findings)
+        summary.verdict = verdict_for(findings, self.fail_on)
+        body = render_summary(
+            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha)
+        )
         try:
-            self.github.submit_review(number, "COMMENT", body, comments, head_sha)
+            self.github.update_review(number, review_id, body)
         except GithubError as exc:
-            log.warning("could not post the review on #%s: %s", number, exc)
+            log.warning("could not refresh the summary on #%s: %s", number, exc)
 
 
 def comment_payload(finding: Finding, commentable: set[int]) -> dict | None:
@@ -195,10 +275,13 @@ def location(finding: Finding) -> str:
     return f"{finding.file}:{finding.line_start}"
 
 
-def summary_body(
-    result: ReviewResult, unplaced: list[Finding], resolved: list[str], mention: str
+def render_summary(
+    summary: dict,
+    unplaced: list[Finding],
+    resolved: list[str],
+    mention: str,
+    commit: str = "",
 ) -> str:
-    summary = result.summary.to_dict()
     lines = verdict_block(summary)
 
     if unplaced:
@@ -209,5 +292,8 @@ def summary_body(
         lines += ["", "Resolved since the last review:", ""] + resolved
 
     lines += notes_block(summary)
-    lines += ["", f"<sub>{cost_line(summary)} · `@{mention} help`</sub>", SUMMARY_MARKER]
+    footer = [f"Reviewed {commit}"] if commit else []
+    footer.append(cost_line(summary))
+    footer.append(f"`@{mention} review` to run again")
+    lines += ["", f"<sub>{' · '.join(footer)}</sub>", SUMMARY_MARKER]
     return "\n".join(lines)

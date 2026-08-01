@@ -7,7 +7,7 @@ Beagle can review pull requests and can learn from the replies of the team. The 
 - A machine account, for example `beagle-bot`. Do not use a personal account.
 - A token for that account. A fine-grained token needs **Contents: read** and **Pull requests: write** on the repository. A classic token needs the `repo` scope, or `public_repo` for a public repository.
 
-Beagle does not push to the repository. It only reads the repository and writes comments. So the account does not need to be a collaborator on a public repository.
+Beagle does not push to the repository. It only reads the repository and writes comments. So the account does not need to be a collaborator on a public repository. But to close a thread when you say a finding is wrong, the account needs write permission.
 
 Put the token in the configuration:
 
@@ -63,6 +63,8 @@ Beagle writes one pull request review. The review holds the summary, every line 
 
 The summary starts with a confidence score out of 5. Then one sentence tells you if the change is safe to merge, or what to correct first. One or two sentences tell you why. A short list names the files that need a second look. There is no table and no list of counts.
 
+The last line of the summary gives the commit that Beagle read: the short hash and the subject of the message. So you know which push the review speaks about.
+
 Each line comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
 
 Beagle sets the state of the review:
@@ -87,7 +89,13 @@ On a second review of the same pull request:
 
 Each new review is one more notification. There is no notification for a comment that does not change.
 
-Beagle does not hide a thread. GitHub gives this operation only in its GraphQL interface.
+### When you say a finding is wrong
+
+Beagle answers in the thread, then it closes the thread. GitHub calls this "resolve conversation".
+
+To close a thread, the account needs write permission on the repository. A read-only account can write comments, but GitHub refuses to let it close a thread. Beagle records that in the log and continues, so nothing else stops.
+
+Beagle also writes the summary again, in the same place. The finding no longer counts, so the confidence score can go up and the verdict can change. You get no new notification for this, because Beagle changes the review it already wrote.
 
 ### A force push
 
@@ -121,8 +129,8 @@ For everything else, write ordinary English. A small model reads your words and 
 
 | What you say | What Beagle does |
 | --- | --- |
-| The finding is wrong, or does not apply | Records the error and holds back findings like it |
-| Not now, or not in this pull request | Drops this one instance and learns nothing |
+| The finding is wrong, or does not apply | Records the error, closes the thread, and holds back findings like it |
+| Not now, or not in this pull request | Drops this one instance, closes the thread, and learns nothing |
 | A convention of your team | Records the convention and follows it |
 | A question | Answers it |
 | Anything else | Nothing |

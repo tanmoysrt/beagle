@@ -17,6 +17,22 @@ IDEMPOTENT = ("GET", "HEAD")
 MAX_PAGES = 20
 NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
 
+THREADS_QUERY = """
+query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100) {
+        nodes { id isResolved comments(first:1) { nodes { databaseId } } }
+      }
+    }
+  }
+}
+"""
+
+RESOLVE_MUTATION = """
+mutation($id:ID!) { resolveReviewThread(input:{threadId:$id}) { thread { isResolved } } }
+"""
+
 
 class GithubClient:
     """The slice of the GitHub REST API that Beagle needs, and nothing else."""
@@ -95,6 +111,37 @@ class GithubClient:
         if commit_id:
             payload["commit_id"] = commit_id
         return self.call("POST", f"/pulls/{number}/reviews", json=payload)
+
+    def update_review(self, number: int, review_id: int, body: str) -> dict:
+        return self.call("PUT", f"/pulls/{number}/reviews/{review_id}", json={"body": body})
+
+    def graphql(self, query: str, variables: dict) -> dict:
+        """Resolving a thread exists only here, so one GraphQL call earns its place."""
+        url = f"{self.base.split('/repos/')[0]}/graphql"
+        response = self.request("POST", url, json={"query": query, "variables": variables})
+        self.raise_for(response, "POST", "/graphql")
+        payload = response.json()
+        if payload.get("errors"):
+            raise GithubError(f"graphql: {payload['errors'][0].get('message')}")
+        return payload.get("data") or {}
+
+    def review_threads(self, number: int) -> dict[int, str]:
+        """The node id of each unresolved thread, keyed by its first comment's id."""
+        owner, name = self.repo.split("/", 1)
+        data = self.graphql(THREADS_QUERY, {"owner": owner, "name": name, "number": number})
+        threads = (((data.get("repository") or {}).get("pullRequest") or {})
+                   .get("reviewThreads") or {}).get("nodes") or []
+        found = {}
+        for thread in threads:
+            if thread.get("isResolved"):
+                continue
+            for comment in ((thread.get("comments") or {}).get("nodes") or []):
+                if comment.get("databaseId"):
+                    found[comment["databaseId"]] = thread["id"]
+        return found
+
+    def resolve_thread(self, thread_id: str) -> None:
+        self.graphql(RESOLVE_MUTATION, {"id": thread_id})
 
     def call(self, method: str, path: str, **kwargs) -> dict:
         response = self.request(method, path, **kwargs)

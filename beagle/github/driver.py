@@ -28,8 +28,10 @@ class GithubDriver:
         self.service = service
         self.client = GithubClient(cfg)
         self.sync = SyncState(service.storage.core)
-        self.poster = ReviewPoster(self.client, cfg.post_style, cfg.mention)
-        self.comments = CommentRouter(self.client, self.sync, service, cfg.mention)
+        self.poster = ReviewPoster(self.client, self.sync, service, cfg.post_style, cfg.mention)
+        self.comments = CommentRouter(
+            self.client, self.sync, service, cfg.mention, self.poster
+        )
         self.poller = (
             Poller(self.client, self.sync, cfg, service.enqueue) if cfg.mode == "poll" else None
         )

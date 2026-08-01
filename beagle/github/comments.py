@@ -29,11 +29,19 @@ class CommentRouter:
     reaches the review prompt of this or any other pull request.
     """
 
-    def __init__(self, github: GithubClient, sync, service, mention: str = DEFAULT_MENTION):
+    def __init__(
+        self,
+        github: GithubClient,
+        sync,
+        service,
+        mention: str = DEFAULT_MENTION,
+        poster=None,
+    ):
         self.github = github
         self.sync = sync
         self.service = service
         self.mention = mention
+        self.poster = poster
 
     def handle(self, comment: Comment) -> None:
         text = command_text(comment.body, self.mention)
@@ -100,6 +108,26 @@ class CommentRouter:
             self.reply(comment, "Understood. I will hold back findings like this one.")
         else:
             self.reply(comment, "Dropped for this change only.")
+        self.withdraw(comment, finding)
+
+    def withdraw(self, comment: Comment, finding: dict) -> None:
+        """A finding the author rejected is settled: close the thread, drop it from the count."""
+        self.service.storage.core.execute(
+            "update findings set status = 'withdrawn' where id = ?", (finding["id"],)
+        )
+        self.resolve(comment)
+        self.poster.refresh(comment.number)
+
+    def resolve(self, comment: Comment) -> None:
+        if comment.kind != "review":
+            return
+        head = comment.in_reply_to or comment.id
+        try:
+            thread = self.github.review_threads(comment.number).get(head)
+            if thread:
+                self.github.resolve_thread(thread)
+        except Exception as exc:
+            log.warning("could not resolve the thread on #%s: %s", comment.number, exc)
 
     def add_rule(self, comment: Comment, fingerprint: str | None, body: str) -> None:
         if not body.strip():
