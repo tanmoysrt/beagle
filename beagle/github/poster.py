@@ -273,14 +273,12 @@ def finding_body(finding: Finding, inline: bool) -> str:
     patch = patch_block(finding, inline)
     if patch:
         lines += ["", patch]
+    note = f"{finding.category} · confidence {finding.confidence:.0%}"
     if inline:
+        # only a finding with a thread of its own can be answered
         lines += folded(finding)
-    lines += [
-        "",
-        f"<sub>{finding.category} · confidence {finding.confidence:.0%} · "
-        "reply to this comment if it is wrong and I will remember</sub>",
-        f"<!-- beagle:finding:{finding.fingerprint} -->",
-    ]
+        note += " · reply to this comment if it is wrong and I will remember"
+    lines += ["", f"<sub>{note}</sub>", f"<!-- beagle:finding:{finding.fingerprint} -->"]
     return "\n".join(lines)
 
 
@@ -341,11 +339,15 @@ def render_summary(
     lines = verdict_block(summary)
 
     if unplaced:
-        lines += ["", "Not anchorable to a line in this diff:", ""]
+        lines += [
+            "",
+            "**These are not on a changed line, so GitHub takes no comment there:**",
+            "",
+        ]
         for finding in unplaced:
             lines += [finding_body(finding, inline=False), ""]
     if resolved:
-        lines += ["", "Resolved since the last review:", ""] + resolved
+        lines += ["", "**Settled since the last review:**", ""] + resolved
 
     lines += notes_block(summary)
     footer = [f"Reviewed {commit}"] if commit else []
