@@ -10,3 +10,6 @@ data/*
 *.db
 *.db-wal
 *.db-shm
+
+# working notes, not part of the project
+review.md
