@@ -61,7 +61,7 @@ The index always follows the base branch of the pull request. Beagle does not ma
 
 Beagle writes one summary comment for the pull request, and it changes that same comment from then on. The pull request never collects a second summary.
 
-The line comments and the state of the review go out together in one review submission. So a round of review gives you one notification, or none if Beagle finds nothing new and the verdict does not change.
+The line comments and the state of the review go out together in one review submission. So a round of review gives you one notification. It gives you none if Beagle finds nothing new and the verdict stays the same.
 
 The summary starts with a confidence score out of 5. Then one sentence tells you if the change is safe to merge, or what to correct first. One or two sentences tell you why. A short list names the files that need a second look. There is no table and no list of counts.
 
