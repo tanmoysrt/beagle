@@ -51,8 +51,8 @@ class LLMModels(Section):
     """Two models. `reasoning` reviews what is risky and settles what is disputed;
     `general` does every other call, and still has to reason."""
 
-    reasoning: str = "claude-opus-5"
-    general: str = "claude-sonnet-5"
+    reasoning: str = "claude-sonnet-5"
+    general: str = "claude-haiku-4-5"
 
 
 class LLMCfg(Section):

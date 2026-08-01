@@ -15,9 +15,9 @@ api_key = "PASTE-OPENROUTER-KEY"
 
 # Two models. `reasoning` reads the code. `general` does the plan, the merge,
 # the summary, and a reply to a comment. Both have to reason.
-# This pair costs about one twelfth of claude-opus-5 with claude-sonnet-5, and
-# it found more of the known problems. Refer to docs/configuration.md.
-# Leave this section out and Beagle uses claude-opus-5 and claude-sonnet-5.
+# This pair costs about one sixth of claude-sonnet-5 with claude-haiku-4-5.
+# It finds fewer problems. Refer to docs/configuration.md for the measurement.
+# Leave this section out and Beagle uses claude-sonnet-5 and claude-haiku-4-5.
 [llm.models]
 reasoning = "z-ai/glm-5.2"
 general = "deepseek/deepseek-v4-flash-0731"

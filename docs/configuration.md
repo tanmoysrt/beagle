@@ -40,12 +40,28 @@ Beagle can read a public repository without a key. For a private repository, use
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
-| `models.reasoning` | `"claude-opus-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
-| `models.general` | `"claude-sonnet-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
+| `models.reasoning` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
+| `models.general` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
 
 The service must accept the Anthropic message format at `/v1/messages`. It must also accept tool use.
 
-Any gateway that gives this format works, so you can use an open model. This pair costs much less through OpenRouter:
+### Which model to give to `reasoning`
+
+Beagle has a test set of 56 known problems. They come from the reviews that a commercial tool left on 33 pull requests. Each model read the same code with the same prompt. This is one measurement of one repository. Read it as a guide, not as a law.
+
+| Model | Found | Cost | Cost for each problem found |
+| --- | --- | --- | --- |
+| `claude-sonnet-5` | 38 of 56 | $1.09 | $0.029 |
+| `claude-opus-5` | 36 of 56 | $2.78 | $0.077 |
+| `z-ai/glm-5.2` | 30 of 56 | $0.19 | $0.006 |
+| `mistralai/mistral-large-2512` | 27 of 56 | $0.14 | $0.005 |
+| `claude-haiku-4-5` | 26 of 56 | $0.46 | $0.018 |
+| `moonshotai/kimi-k2.6` | 20 of 56 | $0.26 | $0.013 |
+| `google/gemini-3-flash-preview` | 20 of 56 | $0.15 | $0.008 |
+
+Two results are important. `claude-opus-5` found less than `claude-sonnet-5` and costs 2.5 times more, so it is not the model to use. And `z-ai/glm-5.2` found 79 percent as many problems for 18 percent of the cost.
+
+Any gateway that gives the Anthropic format works, so you can use an open model:
 
 ```toml
 [llm]
@@ -56,7 +72,7 @@ reasoning = "z-ai/glm-5.2"
 general = "deepseek/deepseek-v4-flash-0731"
 ```
 
-Use `moonshotai/kimi-k2.6` if you prefer Moonshot. Do not use `moonshotai/kimi-k2.7-code`: it cannot turn reasoning off, so it uses the whole token budget on thought and returns no findings.
+Do not use `moonshotai/kimi-k2.7-code`: it cannot turn reasoning off, so it uses the whole token budget on thought and returns no findings. Do not use `qwen/qwen3-coder-plus`: it returns an empty list for each request.
 
 ## embeddings
 
