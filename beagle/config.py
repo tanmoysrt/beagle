@@ -48,16 +48,18 @@ class RepoCfg(Section):
 
 
 class LLMModels(Section):
-    haiku: str
-    sonnet: str
-    opus: str
+    """Two models. `reasoning` reviews what is risky and settles what is disputed;
+    `general` does every other call, and still has to reason."""
+
+    reasoning: str = "claude-opus-5"
+    general: str = "claude-sonnet-5"
 
 
 class LLMCfg(Section):
     base_url: str = "https://api.anthropic.com"
     api_key: str
     headers: dict[str, str] = Field(default_factory=dict)
-    models: LLMModels
+    models: LLMModels = Field(default_factory=LLMModels)
 
 
 class EmbeddingsCfg(Section):

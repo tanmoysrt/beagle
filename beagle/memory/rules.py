@@ -62,7 +62,7 @@ class RuleStore:
         try:
             reply = self.client.send(
                 {
-                    "model": self.client.model_for("haiku"),
+                    "model": self.client.model_for("general"),
                     "max_tokens": 2000,
                     "system": [{"type": "text", "text": prompt}],
                     "messages": [{"role": "user", "content": table(rules)}],

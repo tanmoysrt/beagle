@@ -29,10 +29,10 @@ class Verifier:
         return finding.severity.at_least(Severity.P1) and finding.confidence < SHAKY_CONFIDENCE
 
     def tier_for(self, finding: Finding) -> str:
-        """The strong model only where being wrong is expensive."""
+        """The reasoning model only where being wrong is expensive."""
         if finding.is_security or finding.severity is Severity.P0:
-            return "opus"
-        return "sonnet"
+            return "reasoning"
+        return "general"
 
     def verify_all(
         self,
@@ -78,7 +78,7 @@ class Verifier:
         system: list[dict],
         review_id: str,
         budget: Budget | None,
-        tier: str = "opus",
+        tier: str = "reasoning",
     ) -> dict | None:
         try:
             reply = self.client.structured(

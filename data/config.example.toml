@@ -12,10 +12,13 @@ ignore = []
 base_url = "https://api.anthropic.com"
 api_key = "PASTE-ANTHROPIC-KEY"
 [llm.headers]
+
+# Two models. Leave this out and Beagle uses claude-opus-5 and claude-sonnet-5.
+# `reasoning` reviews risky units and settles disputed findings; `general` does
+# every other call. Both have to reason.
 [llm.models]
-haiku = "claude-haiku-4-5"
-sonnet = "claude-sonnet-5"
-opus = "claude-opus-5"
+reasoning = "claude-opus-5"
+general = "claude-sonnet-5"
 
 [embeddings]
 base_url = "https://api.openai.com/v1"

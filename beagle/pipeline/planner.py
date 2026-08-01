@@ -28,7 +28,7 @@ class Planner:
             plan_values(self.deep_paths, MAX_UNITS, OUTPUT_INSTRUCTIONS["plan"])
         )
         reply = self.client.structured(
-            tier="haiku",
+            tier="general",
             system=[{"type": "text", "text": system}],
             user=describe(diffs),
             schema=PLAN_UNITS_SCHEMA,

@@ -42,7 +42,7 @@ class Merger:
         system = self.prompts.get("dedup").render(dedup_values(OUTPUT_INSTRUCTIONS["dedup"]))
         try:
             reply = self.client.structured(
-                tier="haiku",
+                tier="general",
                 system=[{"type": "text", "text": system}],
                 user=render_findings(findings),
                 schema=report_findings_schema(self.cfg.categories),

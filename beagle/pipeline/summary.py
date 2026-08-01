@@ -49,7 +49,7 @@ class Summariser:
         )
         try:
             reply = self.client.structured(
-                tier="haiku",
+                tier="general",
                 system=[{"type": "text", "text": system}],
                 user=self.brief(findings, diff_digest),
                 schema=SUMMARY_SCHEMA,

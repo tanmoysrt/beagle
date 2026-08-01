@@ -40,11 +40,23 @@ Beagle can read a public repository without a key. For a private repository, use
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
-| `models.haiku` | none. You must give a value. | The small model. Beagle uses it to plan, to merge, and to write the summary. |
-| `models.sonnet` | none. You must give a value. | The usual model for a review |
-| `models.opus` | none. You must give a value. | The strong model for a unit with risk, and for the second check |
+| `models.reasoning` | `"claude-opus-5"` | The model for a unit with risk, for a configured deep path, and for the second check of a security or P0 finding |
+| `models.general` | `"claude-sonnet-5"` | The model for every other call: the usual review, the plan, the merge, the summary, and a reply to a comment |
 
 The service must accept the Anthropic message format at `/v1/messages`. It must also accept tool use.
+
+Any gateway that gives this format works, so you can use an open model. This pair costs much less through OpenRouter, and it finds fewer problems:
+
+```toml
+[llm]
+base_url = "https://openrouter.ai/api"
+api_key = "PASTE-OPENROUTER-KEY"
+[llm.models]
+reasoning = "z-ai/glm-5.2"
+general = "deepseek/deepseek-v4-flash-0731"
+```
+
+`moonshotai/kimi-k2.7-code` is an alternative for `reasoning` at almost the same price. Refer to [reviews.md](reviews.md) for the measurement.
 
 ## embeddings
 

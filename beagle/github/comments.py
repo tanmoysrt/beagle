@@ -147,7 +147,7 @@ class CommentRouter:
         )
         reply = self.service.llm.send(
             {
-                "model": self.service.llm.model_for("sonnet"),
+                "model": self.service.llm.model_for("general"),
                 "max_tokens": 800,
                 "system": [{"type": "text", "text": prompt}],
                 "messages": [{"role": "user", "content": request}],
@@ -164,7 +164,7 @@ class CommentRouter:
         )
         context = "REPLY TO A FINDING" if fingerprint else "TOP-LEVEL COMMENT"
         reply = self.service.llm.structured(
-            tier="haiku",
+            tier="general",
             system=[{"type": "text", "text": prompt}],
             user=f"{context}\n\nCOMMENT:\n{text}",
             schema=COMMENT_SCHEMA,

@@ -17,6 +17,7 @@ from ..storage.dao import CallLog
 # line in a review. Operators on a gateway can be billed differently.
 # in, out, and the share of the input rate that a cached read costs. The first
 # key that appears in the model name wins, so put the specific names first.
+# Rough rates for budget accounting only; a gateway may bill differently.
 PRICES = {
     "deepseek-v4-flash-0731": (0.14, 0.28, 0.02),
     "deepseek-v4-flash": (0.14, 0.28, 0.20),
