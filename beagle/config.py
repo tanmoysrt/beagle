@@ -99,7 +99,7 @@ class ReviewCfg(Section):
             "test_gap",
         ]
     )
-    max_cost_usd: float = Field(default=2.00, gt=0)
+    max_cost_usd: float = Field(default=2.50, gt=0)
     token_budget: int = Field(default=60000, gt=0)
     deep_paths: list[str] = Field(default_factory=list)
 

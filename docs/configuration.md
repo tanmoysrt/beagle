@@ -69,7 +69,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | `fail_on` | `"P1"` | If a finding has this level or a worse level, the verdict is `request_changes`. |
 | `max_findings` | `12` | The largest number of findings in one review |
 | `categories` | bug, security, performance, correctness, style, test_gap | The categories that the model can use |
-| `max_cost_usd` | `2.00` | Beagle stops the review at this cost |
+| `max_cost_usd` | `2.50` | Beagle stops the review at this cost |
 | `token_budget` | `60000` | Beagle stops the review at this number of tokens |
 | `deep_paths` | `[]` | Patterns of paths that always use the strong model |
 
