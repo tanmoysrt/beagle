@@ -8,32 +8,27 @@ BADGES = {"P0": "🔴", "P1": "🟠", "P2": "🟡", "P3": "🔵", "P4": "⚪", "
 def render_markdown(review: dict[str, Any]) -> str:
     """The full report. The pull request summary reuses the same parts."""
     summary = review.get("summary", {})
-    lines = [f"## Beagle review — {review['review_id']}", ""]
-    if summary.get("description"):
-        lines += [summary["description"], ""]
-    lines += [verdict_line(summary), counts_line(summary), ""]
+    lines = verdict_block(summary) + [""]
 
     for finding in review.get("findings", []):
         if finding.get("status") in (None, "open"):
             lines += finding_block(finding)
 
     lines += notes_block(summary)
-    lines += ["", cost_line(summary)]
+    lines += ["", f"_{cost_line(summary)}_"]
     return "\n".join(lines)
 
 
-def verdict_line(summary: dict[str, Any]) -> str:
-    return (
-        f"**Verdict:** {summary.get('verdict', 'comment')} · "
-        f"**Confidence:** {summary.get('confidence', 0):.2f} · "
-        f"**Coverage:** {summary.get('coverage', 1):.0%}"
-    )
-
-
-def counts_line(summary: dict[str, Any]) -> str:
-    counts = summary.get("counts", {})
-    active = ", ".join(f"{level} × {count}" for level, count in counts.items() if count)
-    return f"**Findings:** {active or 'none'}"
+def verdict_block(summary: dict[str, Any]) -> list[str]:
+    """Score, nudge, why, and where to look — in that order and nothing else."""
+    lines = [f"### Confidence Score: {summary.get('score', 5)}/5", ""]
+    if summary.get("description"):
+        lines += [summary["description"], ""]
+    if summary.get("reasoning"):
+        lines += [summary["reasoning"], ""]
+    attention = summary.get("attention") or []
+    lines.append("\n".join(attention) if attention else "No files require special attention.")
+    return lines
 
 
 def notes_block(summary: dict[str, Any]) -> list[str]:
@@ -41,12 +36,8 @@ def notes_block(summary: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     if summary.get("overflow"):
         lines.append(f"_+{summary['overflow']} minor observations held back._")
-    if summary.get("risks"):
-        lines += ["", "**Risks:**"] + [f"- {risk}" for risk in summary["risks"]]
     if summary.get("notes"):
         lines += ["", "**Notes:**"] + [f"- {note}" for note in summary["notes"]]
-    if summary.get("instruction_files"):
-        lines += ["", "Instruction files applied: " + ", ".join(summary["instruction_files"])]
     if summary.get("skipped_files"):
         skipped = ", ".join(
             f"{item['path']} ({item['reason']})" for item in summary["skipped_files"]
@@ -59,9 +50,9 @@ def notes_block(summary: dict[str, Any]) -> list[str]:
 
 def cost_line(summary: dict[str, Any]) -> str:
     return (
-        f"_Cost ${summary.get('cost_usd', 0):.4f} · "
+        f"${summary.get('cost_usd', 0):.4f} · "
         f"{summary.get('tokens_in', 0)} in / {summary.get('tokens_out', 0)} out "
-        f"({summary.get('tokens_cached', 0)} cached) · {summary.get('duration_seconds', 0)}s_"
+        f"({summary.get('tokens_cached', 0)} cached) · {summary.get('duration_seconds', 0)}s"
     )
 
 

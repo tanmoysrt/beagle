@@ -130,9 +130,11 @@ class Finding:
 class ReviewSummary:
     verdict: str = "comment"
     description: str = ""
+    reasoning: str = ""
+    score: int = 5
     confidence: float = 0.0
     coverage: float = 1.0
-    risks: list[str] = field(default_factory=list)
+    attention: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
     suppressed: int = 0
@@ -166,6 +168,19 @@ def verdict_for(findings: list[Finding], fail_on: Severity) -> str:
     if any(finding.severity.at_least(fail_on) for finding in findings):
         return "request_changes"
     return "comment" if findings else "approve"
+
+
+SCORE_FLOOR = {Severity.P0: 1, Severity.P1: 2, Severity.P2: 3, Severity.P3: 4}
+
+
+def score_for(findings: list[Finding], coverage: float) -> int:
+    """How safe this looks, out of 5. The worst finding sets the ceiling."""
+    score = min([SCORE_FLOOR.get(item.severity, 5) for item in findings], default=5)
+    if sum(1 for item in findings if item.severity is Severity.P2) > 1:
+        score = min(score, 3)
+    if coverage < 0.8:
+        score -= 1
+    return max(1, min(5, score))
 
 
 @dataclass

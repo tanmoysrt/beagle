@@ -42,12 +42,12 @@ Beagle also starts this review by itself. Refer to [github.md](github.md).
 3. **Plan.** The small model puts the files into units. One unit is one logical change.
 4. **Find the risk.** Beagle reads the call graph. Beagle gives a risk tag to a unit that is near one of these subjects: authentication, sessions, cryptography, payments, deletion of data, or concurrency. A unit with a risk tag uses the strong model.
 5. **Scan for secrets.** A local scan reads the new lines. This scan uses patterns and entropy. It does not use a model and it does not cost money.
-6. **Collect the context.** Beagle collects three items for each unit: the diff, then the related symbols from the call graph, then similar code from the index. Beagle stops when the token budget is full. The summary shows the parts that did not fit.
+6. **Collect the context.** Beagle collects four items for each unit. First the diff. Then the related symbols from the call graph. Then the other files that still name what the diff removes. Then similar code from the index. The third item is a text search of the whole tree, so it finds a caller in a different language. A Vue component can call a Python route by its address. Such a call has no entry in the call graph, but the search finds it. Beagle stops when the token budget is full. The summary shows the parts that did not fit.
 7. **Review.** The model reads each unit and returns findings.
 8. **Merge.** The small model puts the same finding from different units together. Beagle then applies the limits.
 9. **Classify the security findings.** Refer to "Security findings" below.
 10. **Apply the memory.** Beagle hides the findings that the team dismissed before. Refer to [memory.md](memory.md).
-11. **Check again.** The strong model examines each security finding, and each P0 or P1 finding with a low confidence. The model can agree, correct, or refuse the finding.
+11. **Check again.** A second model examines each security finding, and each P0 or P1 finding with a low confidence. The strong model checks a security or P0 finding; the usual model checks the others. The model can agree, correct, or refuse the finding.
 12. **Write the summary.** Beagle keeps the result and closes the event stream.
 
 ## Reviews of almost the same change

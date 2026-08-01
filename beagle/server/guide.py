@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from ..config import Config, Section
 from ..constants import P4_CAP, P5_CAP, SCHEMA_VERSION
+from ..github.events import DEFAULT_MENTION
 from ..pipeline.schemas import SEVERITIES
 
 TOPICS = ("api", "config", "feedback", "comments")
 
-def guide_text(topic: str | None = None) -> str:
+def guide_text(topic: str | None = None, mention: str = DEFAULT_MENTION) -> str:
     """Built from the live registries, so it cannot drift from the code."""
     sections = {
         "api": api_section,
         "config": config_section,
         "feedback": feedback_section,
-        "comments": comments_section,
+        "comments": lambda: comments_section(mention),
     }
     if topic in sections:
         return sections[topic]()
@@ -103,7 +104,7 @@ def feedback_section() -> str:
     )
 
 
-def comments_section() -> str:
+def comments_section(mention: str = DEFAULT_MENTION) -> str:
     from ..github.comments import COMMAND_HELP
 
     lines = [
@@ -114,7 +115,7 @@ def comments_section() -> str:
         "| command | meaning |",
         "| --- | --- |",
     ]
-    lines += [f"| `{command}` | {meaning} |" for command, meaning in COMMAND_HELP]
+    lines += [f"| `@{mention} {command}` | {meaning} |" for command, meaning in COMMAND_HELP]
     lines += [
         "",
         "Free wording works too: a reply is classified into false positive, style rule, "

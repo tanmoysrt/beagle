@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from ..config import Config
+from ..config import Config, Severity
 from ..errors import BudgetExceeded, ProviderError
 from ..index.embedder import ChunkEmbedder
 from ..llm.client import Budget, LLMClient, make_budget
@@ -26,6 +26,7 @@ from .models import (
     ReviewState,
     ReviewSummary,
     count_by_severity,
+    score_for,
     verdict_for,
 )
 from .planner import Planner
@@ -34,6 +35,7 @@ from .risk import RiskTagger
 from .security import SecurityClassifier
 from .summary import Summariser
 from .verify import Verifier
+from .xref import CrossReferences
 
 
 class ReviewRunner:
@@ -66,7 +68,7 @@ class ReviewRunner:
 
         self.selector = FileSelector(mirror, config.repo.ignore)
         self.instructions = InstructionFinder(mirror, config.context.instruction_files_extra)
-        self.context_builder = ContextBuilder(store, embedder)
+        self.context_builder = ContextBuilder(store, embedder, CrossReferences(mirror))
         self.planner = Planner(client, prompts, config.review.deep_paths)
         self.risk = RiskTagger(store, config.review.deep_paths)
         self.reviewer = UnitReviewer(client, prompts, config.review)
@@ -127,7 +129,7 @@ class ReviewRunner:
         per_unit = self.per_unit_budget(state.units)
         for unit in state.units:
             state.events.emit("unit_started", unit=unit.key, title=unit.title, files=unit.paths)
-            context = self.context_builder.build(unit, state.diffs, per_unit)
+            context = self.context_builder.build(unit, state.diffs, per_unit, state.head_sha)
             state.contexts[unit.key] = context.render()
             if self.embedder is not None and not context.rag_available:
                 state.degraded.append("retrieval unavailable")
@@ -170,6 +172,7 @@ class ReviewRunner:
             kept, digest(state.diffs), state.coverage, review_id, state.budget
         )
         summary.verdict = verdict_for(kept, self.config.review.fail_on)
+        summary.score = score_for(kept, state.coverage)
         summary.counts = count_by_severity(kept)
         summary.suppressed = len(outcome.suppressed)
         summary.overflow = overflow
@@ -190,7 +193,7 @@ class ReviewRunner:
         """Security findings ignore the floor; everything else respects it."""
         floor = self.config.review.min_severity
         return [
-            finding
+            demote_advice(finding)
             for finding in findings
             if finding.is_security or finding.severity.at_least(floor)
         ]
@@ -303,6 +306,13 @@ class ReviewRunner:
                     " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     finding.as_row(result.review_id, now),
                 )
+
+
+def demote_advice(finding: Finding) -> Finding:
+    """A missing test never blocks a merge, whatever severity the model chose."""
+    if finding.category == "test_gap" and finding.severity.at_least(Severity.P2):
+        finding.severity = Severity.P3
+    return finding
 
 
 def digest(diffs: list[FileDiff]) -> str:

@@ -30,8 +30,16 @@ def finding_schema(categories: list[str]) -> dict[str, Any]:
             "category": {"type": "string", "enum": categories},
             "severity": {"type": "string", "enum": SEVERITIES},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "title": {"type": "string", "description": "One line, specific, no filler"},
-            "body": {"type": "string", "description": "Why it is wrong and what to do"},
+            "title": {
+                "type": "string",
+                "description": "Three to six words in Title Case naming the defect, "
+                "e.g. 'Setup Failure Reports Success'",
+            },
+            "body": {
+                "type": "string",
+                "description": "One to three sentences: the input or state, what goes "
+                "wrong, and the consequence. No preamble, no restatement of the code.",
+            },
             "suggested_patch": {
                 "type": "string",
                 "description": "Replacement code for the cited lines, when the fix is a line edit",
@@ -110,12 +118,22 @@ VERIFY_SCHEMA = {
 SUMMARY_SCHEMA = {
     "type": "object",
     "properties": {
-        "description": {"type": "string"},
-        "verdict": {"type": "string", "enum": ["approve", "comment", "request_changes"]},
-        "risks": {"type": "array", "items": {"type": "string"}},
+        "description": {
+            "type": "string",
+            "description": "One sentence: merge it, or the one thing to fix first",
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "One or two sentences of specific technical justification",
+        },
+        "attention": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "`path — what needs attention there`, at most two entries",
+        },
         "notes": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["description", "verdict"],
+    "required": ["description", "reasoning"],
     "additionalProperties": False,
 }
 

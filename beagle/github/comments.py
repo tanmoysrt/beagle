@@ -10,16 +10,16 @@ from .events import DEFAULT_MENTION, FINDING_MARKER, Comment, command_text
 log = logging.getLogger("beagle.github.comments")
 
 COMMAND_HELP = [
-    ("@beagle false positive [why]", "the finding is wrong, and Beagle should learn from it"),
-    ("@beagle fp", "the same, in fewer words"),
-    ("@beagle not now", "dismiss this one instance and learn nothing"),
-    ("@beagle explain", "more detail about the finding in this thread"),
-    ("@beagle rule: <text>", "record a team convention"),
-    ("@beagle review", "review the pull request again"),
-    ("@beagle review deep", "review again, strongest model on every file"),
-    ("@beagle rules", "list the conventions"),
-    ("@beagle status", "the condition of the index and the queue"),
-    ("@beagle help", "this list"),
+    ("false positive [why]", "the finding is wrong, and Beagle should learn from it"),
+    ("fp", "the same, in fewer words"),
+    ("not now", "dismiss this one instance and learn nothing"),
+    ("explain", "more detail about the finding in this thread"),
+    ("rule: <text>", "record a team convention"),
+    ("review", "review the pull request again"),
+    ("review deep", "review again, strongest model on every file"),
+    ("rules", "list the conventions"),
+    ("status", "the condition of the index and the queue"),
+    ("help", "this list"),
 ]
 
 FAST_PATHS = (
@@ -99,16 +99,17 @@ class CommentRouter:
         elif action == "explain":
             self.explain(comment, fingerprint, argument)
         elif action in ("review", "review_deep"):
+            # the 👀 on the pull request is the acknowledgement; a reply would be a
+            # second notification for the same thing
             self.service.enqueue(
                 "github_review", {"pr": comment.number, "deep": action == "review_deep"}
             )
-            self.reply(comment, "On it. A new review is queued.")
         elif action == "rules":
-            self.reply(comment, rules_block(self.service.rules.active()))
+            self.reply(comment, rules_block(self.service.rules.active(), self.mention))
         elif action == "status":
             self.reply(comment, status_block(self.service.report.index_status()))
         elif action == "help":
-            self.reply(comment, help_block())
+            self.reply(comment, help_block(self.mention))
 
     def feedback(self, comment: Comment, fingerprint: str | None, action: str, reason: str) -> None:
         finding = self.finding_for(comment.number, fingerprint)
@@ -221,17 +222,17 @@ def parse(text: str) -> tuple[str | None, str]:
     return None, ""
 
 
-def help_block() -> str:
+def help_block(mention: str) -> str:
     lines = ["**What you can ask me**", "", "| command | meaning |", "| --- | --- |"]
-    lines += [f"| `{command}` | {meaning} |" for command, meaning in COMMAND_HELP]
+    lines += [f"| `@{mention} {command}` | {meaning} |" for command, meaning in COMMAND_HELP]
     lines.append("")
     lines.append("👍 on one of my comments counts as agreement, 👎 as a false positive.")
     return "\n".join(lines)
 
 
-def rules_block(rules: list[dict]) -> str:
+def rules_block(rules: list[dict], mention: str) -> str:
     if not rules:
-        return "No conventions recorded yet. Add one with `@beagle rule: <text>`."
+        return f"No conventions recorded yet. Add one with `@{mention} rule: <text>`."
     lines = ["**Team conventions**", "", "| id | rule | hits |", "| --- | --- | --- |"]
     lines += [f"| {rule['id']} | {rule['body']} | {rule['hits']} |" for rule in rules]
     return "\n".join(lines)

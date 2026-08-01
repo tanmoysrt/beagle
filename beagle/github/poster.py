@@ -1,54 +1,61 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from ..errors import GithubError
 from ..pipeline.models import Finding
 from ..pipeline.runner import ReviewResult
-from ..report import BADGES, cost_line, counts_line, notes_block, render_markdown, verdict_line
+from ..report import BADGES, cost_line, notes_block, verdict_block
 from .client import GithubClient
-from .events import FINDING_MARKER, RESOLVED_MARKER, SUMMARY_MARKER
+from .events import DEFAULT_MENTION, FINDING_MARKER, RESOLVED_MARKER, SUMMARY_MARKER
 
 log = logging.getLogger("beagle.github.poster")
+
+HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+COMMENT_TITLE = re.compile(r"\*\*P\d — (.+?)\*\*")
 
 
 class ReviewPoster:
     """Puts a review on a pull request and keeps it in step on a re-push.
 
-    Comments are matched by the hidden marker in their body rather than by a
-    stored identifier, so the mapping survives a lost database.
+    Everything goes out as one review submission, so a round of review is one
+    notification. Comments are matched by the hidden marker in their body rather
+    than by a stored identifier, so the mapping survives a lost database.
     """
 
-    def __init__(self, github: GithubClient, style: str = "inline_plus_summary"):
+    def __init__(
+        self,
+        github: GithubClient,
+        style: str = "inline_plus_summary",
+        mention: str = DEFAULT_MENTION,
+    ):
         self.github = github
         self.inline = style == "inline_plus_summary"
+        self.mention = mention
 
     def post(
         self, number: int, head_sha: str, result: ReviewResult, last_verdict: str | None = None
     ) -> dict:
         placed, resolved = self.scan(number)
         current = {finding.fingerprint: finding for finding in result.findings}
+        fresh = [
+            finding for fingerprint, finding in current.items() if fingerprint not in placed
+        ]
 
-        added, unplaced = 0, []
-        for fingerprint, finding in current.items():
-            if fingerprint in placed:
-                continue
-            if self.inline and self.post_inline(number, head_sha, finding):
-                added += 1
-            else:
-                unplaced.append(finding)
-
+        comments, unplaced = self.anchor(number, fresh)
         closing = {
             fingerprint: comment
             for fingerprint, comment in placed.items()
             if fingerprint not in current and fingerprint not in resolved
         }
         withdrawn = {item.fingerprint for item in result.suppressed + result.rejected}
-        closed = self.close_threads(number, closing, withdrawn, head_sha)
-        self.write_summary(number, result, unplaced)
-        if result.summary.verdict != last_verdict:
-            self.submit_verdict(number, result.summary.verdict)
-        return {"added": added, "resolved": closed, "in_summary": len(unplaced)}
+
+        body = summary_body(
+            result, unplaced, resolution_lines(closing, withdrawn, head_sha), self.mention
+        )
+        self.submit(number, head_sha, result.summary.verdict, body, comments)
+        return {"added": len(comments), "resolved": len(closing), "in_summary": len(unplaced)}
 
     def scan(self, number: int) -> tuple[dict[str, dict], set[str]]:
         """Beagle's own finding comments, and the ones already called resolved."""
@@ -63,73 +70,91 @@ class ReviewPoster:
                 resolved.add(done.group(1))
         return placed, resolved
 
-    def post_inline(self, number: int, head_sha: str, finding: Finding) -> bool:
-        """False when GitHub will not anchor the comment, so it goes in the summary."""
-        if not finding.line_start:
-            return False
-        payload = {
-            "body": finding_body(finding, inline=True),
-            "commit_id": head_sha,
-            "path": finding.file,
-            "side": "RIGHT",
-            "line": finding.line_end or finding.line_start,
-        }
-        if finding.line_end and finding.line_end > finding.line_start:
-            payload["start_line"] = finding.line_start
-            payload["start_side"] = "RIGHT"
+    def anchor(self, number: int, findings: list[Finding]) -> tuple[list[dict], list[Finding]]:
+        """A batched review is rejected whole, so an unanchorable finding must be
+        moved to the summary before the request goes out, not after it fails."""
+        if not self.inline:
+            return [], list(findings)
         try:
-            self.github.create_review_comment(number, payload)
-            return True
+            commentable = commentable_lines(self.github.pull_files(number))
         except GithubError as exc:
-            log.info("inline comment on %s rejected, moving it to the summary: %s", finding.file, exc)
-            return False
+            log.warning("could not read the diff of #%s: %s", number, exc)
+            return [], list(findings)
 
-    def close_threads(
-        self, number: int, closing: dict[str, dict], withdrawn: set[str], head_sha: str
-    ) -> int:
-        """Say why each thread is closing: the author fixed it, or Beagle withdrew it."""
-        closed = 0
-        for fingerprint, comment in closing.items():
-            note = (
-                "✔ Withdrawn. This is not a problem here."
-                if fingerprint in withdrawn
-                else f"✔ Resolved in `{head_sha[:7]}`."
-            )
-            body = f"{note}\n<!-- beagle:resolved:{fingerprint} -->"
-            try:
-                self.github.reply_to_review_comment(number, comment["id"], body)
-                closed += 1
-            except GithubError as exc:
-                log.warning("could not close thread %s: %s", comment["id"], exc)
-        return closed
+        comments, unplaced = [], []
+        for finding in findings:
+            payload = comment_payload(finding, commentable.get(finding.file, set()))
+            if payload is None:
+                unplaced.append(finding)
+            else:
+                comments.append(payload)
+        return comments, unplaced
 
-    def write_summary(self, number: int, result: ReviewResult, unplaced: list[Finding]) -> None:
-        body = summary_body(result, unplaced) if self.inline else full_report(result)
-        existing = next(
-            (
-                comment
-                for comment in self.github.issue_comments(number)
-                if SUMMARY_MARKER in (comment.get("body") or "")
-            ),
-            None,
-        )
-        if existing:
-            self.github.update_issue_comment(existing["id"], body)
-        else:
-            self.github.create_issue_comment(number, body)
-
-    def submit_verdict(self, number: int, verdict: str) -> None:
+    def submit(
+        self, number: int, head_sha: str, verdict: str, body: str, comments: list[dict]
+    ) -> None:
         event = "REQUEST_CHANGES" if verdict == "request_changes" else "COMMENT"
-        note = (
-            "Beagle found something that should not merge as it stands."
-            if event == "REQUEST_CHANGES"
-            else "Beagle finished its review."
-        )
         try:
-            self.github.submit_review(number, event, f"{note} See the summary comment.")
+            self.github.submit_review(number, event, body, comments, head_sha)
+            return
         except GithubError as exc:
             # GitHub refuses REQUEST_CHANGES on a pull request the token's own account opened.
-            log.warning("could not set the review state on #%s: %s", number, exc)
+            log.warning("review on #%s rejected as %s: %s", number, event, exc)
+        try:
+            self.github.submit_review(number, "COMMENT", body, comments, head_sha)
+        except GithubError as exc:
+            log.warning("could not post the review on #%s: %s", number, exc)
+
+
+def comment_payload(finding: Finding, commentable: set[int]) -> dict | None:
+    line = finding.line_end or finding.line_start
+    if not line or line not in commentable:
+        return None
+    payload = {
+        "body": finding_body(finding, inline=True),
+        "path": finding.file,
+        "side": "RIGHT",
+        "line": line,
+    }
+    start = finding.line_start
+    if start and start < line and start in commentable:
+        payload["start_line"] = start
+        payload["start_side"] = "RIGHT"
+    return payload
+
+
+def commentable_lines(files: list[dict]) -> dict[str, set[int]]:
+    """The right-side lines GitHub will accept a comment on: those inside a hunk."""
+    lines: dict[str, set[int]] = {}
+    for entry in files:
+        numbers: set[int] = set()
+        cursor = 0
+        for row in (entry.get("patch") or "").splitlines():
+            header = HUNK_HEADER.match(row)
+            if header:
+                cursor = int(header.group(1))
+            elif row.startswith(("+", " ")):
+                numbers.add(cursor)
+                cursor += 1
+            elif not row.startswith("-"):
+                cursor += 1
+        lines[entry.get("filename", "")] = numbers
+    return lines
+
+
+def resolution_lines(closing: dict[str, dict], withdrawn: set[str], head_sha: str) -> list[str]:
+    """Closed threads are reported once in the summary, not as a reply on each one."""
+    lines = []
+    for fingerprint, comment in closing.items():
+        state = "withdrawn" if fingerprint in withdrawn else f"fixed in `{head_sha[:7]}`"
+        title, url = title_of(comment), comment.get("html_url")
+        lines.append(f"- {f'[{title}]({url})' if url else title} — {state}")
+    return lines
+
+
+def title_of(comment: dict) -> str:
+    found = COMMENT_TITLE.search(comment.get("body") or "")
+    return found.group(1) if found else "a finding"
 
 
 def finding_body(finding: Finding, inline: bool) -> str:
@@ -142,8 +167,8 @@ def finding_body(finding: Finding, inline: bool) -> str:
         lines += ["", patch]
     lines += [
         "",
-        f"_{finding.category} · confidence {finding.confidence:.0%} · "
-        "reply `@beagle fp` if this is wrong_",
+        f"<sub>{finding.category} · confidence {finding.confidence:.0%} · "
+        "reply to this comment if it is wrong and I will remember</sub>",
         f"<!-- beagle:finding:{finding.fingerprint} -->",
     ]
     return "\n".join(lines)
@@ -170,25 +195,19 @@ def location(finding: Finding) -> str:
     return f"{finding.file}:{finding.line_start}"
 
 
-def summary_body(result: ReviewResult, unplaced: list[Finding]) -> str:
-    """The same summary as the report, plus what only a pull request needs."""
+def summary_body(
+    result: ReviewResult, unplaced: list[Finding], resolved: list[str], mention: str
+) -> str:
     summary = result.summary.to_dict()
-    lines = ["## 🐕 Beagle review", ""]
-    if summary["description"]:
-        lines += [summary["description"], ""]
-    lines += [verdict_line(summary), counts_line(summary)]
-    if summary["suppressed"]:
-        lines.append(f"{summary['suppressed']} finding(s) held back by what the team taught Beagle.")
+    lines = verdict_block(summary)
 
     if unplaced:
-        lines += ["", "These could not be anchored to a line in the diff:", ""]
+        lines += ["", "Not anchorable to a line in this diff:", ""]
         for finding in unplaced:
             lines += [finding_body(finding, inline=False), ""]
+    if resolved:
+        lines += ["", "Resolved since the last review:", ""] + resolved
 
     lines += notes_block(summary)
-    lines += ["", cost_line(summary), "", "_`@beagle help` for what you can ask._", SUMMARY_MARKER]
+    lines += ["", f"<sub>{cost_line(summary)} · `@{mention} help`</sub>", SUMMARY_MARKER]
     return "\n".join(lines)
-
-
-def full_report(result: ReviewResult) -> str:
-    return render_markdown(result.to_dict()) + f"\n{SUMMARY_MARKER}"

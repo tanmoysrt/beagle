@@ -6,6 +6,7 @@ from ..index.embedder import ChunkEmbedder
 from ..repo.diff import FileDiff
 from ..storage.dao import IndexStore
 from .models import ReviewUnit
+from .xref import CrossReferences, render as render_xrefs
 
 CHARS_PER_TOKEN = 4
 RAG_RESULTS = 4
@@ -17,6 +18,7 @@ BODY_LIMIT_CHARS = 1800
 class UnitContext:
     diff_text: str = ""
     neighbours: str = ""
+    cross_language: str = ""
     similar: str = ""
     truncated: list[str] = field(default_factory=list)
     rag_available: bool = True
@@ -26,6 +28,11 @@ class UnitContext:
         parts = [f"CHANGED CODE UNDER REVIEW\n\n{self.diff_text}"]
         if self.neighbours:
             parts.append(f"RELATED SYMBOLS FROM THE CALL GRAPH\n\n{self.neighbours}")
+        if self.cross_language:
+            parts.append(
+                "OTHER FILES THAT STILL NAME WHAT THIS DIFF REMOVES OR RENAMES\n\n"
+                f"{self.cross_language}"
+            )
         if self.similar:
             parts.append(f"SIMILAR CODE ELSEWHERE IN THE REPOSITORY\n\n{self.similar}")
         if self.truncated:
@@ -37,16 +44,31 @@ class ContextBuilder:
     """Fills a unit's token budget: diff, then call-graph neighbours, then
     retrieved code. What does not fit is named, not dropped silently."""
 
-    def __init__(self, store: IndexStore, embedder: ChunkEmbedder | None = None):
+    def __init__(
+        self,
+        store: IndexStore,
+        embedder: ChunkEmbedder | None = None,
+        xrefs: CrossReferences | None = None,
+    ):
         self.store = store
         self.embedder = embedder
+        self.xrefs = xrefs
 
-    def build(self, unit: ReviewUnit, diffs: list[FileDiff], budget_tokens: int) -> UnitContext:
+    def build(
+        self,
+        unit: ReviewUnit,
+        diffs: list[FileDiff],
+        budget_tokens: int,
+        head_sha: str | None = None,
+    ) -> UnitContext:
         context = UnitContext()
         unit_diffs = [item for item in diffs if item.path in unit.paths]
 
         context.diff_text = "\n\n".join(item.render() for item in unit_diffs)
         used = estimate(context.diff_text)
+
+        context.cross_language = self.cross_language(unit_diffs, head_sha)
+        used += estimate(context.cross_language)
 
         remaining = budget_tokens - used
         neighbours, neighbour_tokens, skipped = self.call_graph_context(unit_diffs, remaining)
@@ -65,6 +87,11 @@ class ContextBuilder:
 
         context.tokens = used
         return context
+
+    def cross_language(self, diffs: list[FileDiff], head_sha: str | None) -> str:
+        if self.xrefs is None:
+            return ""
+        return render_xrefs(self.xrefs.find(diffs, head_sha))
 
     def call_graph_context(
         self, diffs: list[FileDiff], budget_tokens: int

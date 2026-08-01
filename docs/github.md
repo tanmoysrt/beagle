@@ -59,11 +59,13 @@ The index always follows the base branch of the pull request. Beagle does not ma
 
 ## What Beagle writes
 
-For each finding, Beagle writes one comment on the line of the code. Each comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
+Beagle writes one pull request review. The review holds the summary, every line comment, and the state. So one review gives you one notification.
 
-Beagle also writes one summary comment. The summary contains the verdict, the counts, and the money and the time that the review used.
+The summary starts with a confidence score out of 5. Then one sentence tells you if the change is safe to merge, or what to correct first. One or two sentences tell you why. A short list names the files that need a second look. There is no table and no list of counts.
 
-Beagle then sets the state of the review:
+Each line comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
+
+Beagle sets the state of the review:
 
 | Verdict | State |
 | --- | --- |
@@ -79,10 +81,11 @@ Beagle finds its own comments by a hidden marker in the text. The marker holds t
 On a second review of the same pull request:
 
 - A finding that is still there: Beagle does not write again. The discussion stays.
-- A finding that is gone: Beagle answers in the thread with `✔ Resolved in <commit>`.
-- A new finding: Beagle writes a new comment.
-- The summary: Beagle changes the text of the same comment.
-- The state: Beagle sets it again only if the verdict changed.
+- A finding that is gone: the new summary tells you that the author corrected it, or that Beagle withdrew it.
+- A new finding: Beagle adds it to the new review.
+- The state: Beagle sets it again with each review.
+
+Each new review is one more notification. There is no notification for a comment that does not change.
 
 Beagle does not hide a thread. GitHub gives this operation only in its GraphQL interface.
 
@@ -97,7 +100,7 @@ What the review costs depends on the code, not on the commit:
 
 A force push can make GitHub mark a comment of Beagle as outdated. Beagle keeps that comment, because a new comment would lose the discussion in the thread.
 
-GitHub refuses a comment if the line is not in the diff. Beagle then moves that finding into the summary comment. Beagle loses no finding.
+GitHub accepts a comment only on a line that its own diff contains. Beagle reads that diff first and moves each other finding into the summary. Beagle loses no finding.
 
 To get only the summary, set `post_style = "summary_only"`.
 
@@ -105,7 +108,9 @@ To get only the summary, set `post_style = "summary_only"`.
 
 Write the name of the account, then the command. The default name is `beagle`. Set `github.mention` to the name of your account, for example `beagle-app`. The command must be the first word after the name.
 
-When Beagle reads your comment, it puts a 👍 on that comment and a 👀 on the pull request. When the work is complete, the 👀 becomes a 👍. So you know that Beagle got the message and that it is busy.
+When Beagle reads your comment, it puts a 👍 on that comment and a 👀 on the pull request. When the work is complete, the 👀 becomes a 👍. So you know that Beagle got the message and that it is busy. Beagle does not write a reply to tell you the same thing, because that would be one more notification.
+
+In the table below, `@beagle` is the account that `github.mention` names.
 
 | Command | Result |
 | --- | --- |

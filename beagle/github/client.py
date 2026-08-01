@@ -60,17 +60,14 @@ class GithubClient:
     def review_comments(self, number: int) -> list[dict]:
         return self.paged(f"/pulls/{number}/comments")
 
+    def pull_files(self, number: int) -> list[dict]:
+        return self.paged(f"/pulls/{number}/files")
+
     def review_comment(self, comment_id: int) -> dict:
         return self.call("GET", f"/pulls/comments/{comment_id}")
 
     def create_issue_comment(self, number: int, body: str) -> dict:
         return self.call("POST", f"/issues/{number}/comments", json={"body": body})
-
-    def update_issue_comment(self, comment_id: int, body: str) -> dict:
-        return self.call("PATCH", f"/issues/comments/{comment_id}", json={"body": body})
-
-    def create_review_comment(self, number: int, payload: dict) -> dict:
-        return self.call("POST", f"/pulls/{number}/comments", json=payload)
 
     def reply_to_review_comment(self, number: int, comment_id: int, body: str) -> dict:
         return self.call(
@@ -83,8 +80,21 @@ class GithubClient:
     def unreact(self, path: str, reaction_id: int) -> None:
         self.call("DELETE", f"{path}/reactions/{reaction_id}")
 
-    def submit_review(self, number: int, event: str, body: str) -> dict:
-        return self.call("POST", f"/pulls/{number}/reviews", json={"event": event, "body": body})
+    def submit_review(
+        self,
+        number: int,
+        event: str,
+        body: str,
+        comments: list[dict] | None = None,
+        commit_id: str | None = None,
+    ) -> dict:
+        """One review: the summary, every inline comment, and the state, in one notification."""
+        payload: dict = {"event": event, "body": body}
+        if comments:
+            payload["comments"] = comments
+        if commit_id:
+            payload["commit_id"] = commit_id
+        return self.call("POST", f"/pulls/{number}/reviews", json=payload)
 
     def call(self, method: str, path: str, **kwargs) -> dict:
         response = self.request(method, path, **kwargs)

@@ -73,7 +73,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | `token_budget` | `60000` | Beagle stops the review at this number of tokens |
 | `deep_paths` | `[]` | Patterns of paths that always use the strong model |
 
-Beagle limits P5 findings to 2 and P4 findings to 3 in one review. These limits are in the code. You cannot change them with the configuration.
+Beagle limits P5 findings to 2 and P4 findings to 3 in one review. A `test_gap` finding never goes above P3, so a missing test cannot stop a merge. These limits are in the code. You cannot change them with the configuration.
 
 ## context
 

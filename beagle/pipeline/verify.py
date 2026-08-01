@@ -28,6 +28,12 @@ class Verifier:
             return True
         return finding.severity.at_least(Severity.P1) and finding.confidence < SHAKY_CONFIDENCE
 
+    def tier_for(self, finding: Finding) -> str:
+        """The strong model only where being wrong is expensive."""
+        if finding.is_security or finding.severity is Severity.P0:
+            return "opus"
+        return "sonnet"
+
     def verify_all(
         self,
         findings: list[Finding],
@@ -42,7 +48,7 @@ class Verifier:
                 kept.append(finding)
                 continue
             system = self.system_for(prompt, contexts.get(finding.unit, ""))
-            verdict = self.check(finding, system, review_id, budget)
+            verdict = self.check(finding, system, review_id, budget, self.tier_for(finding))
             if not isinstance(verdict, dict):
                 kept.append(finding)
             elif verdict.get("verdict") == "reject":
@@ -72,10 +78,11 @@ class Verifier:
         system: list[dict],
         review_id: str,
         budget: Budget | None,
+        tier: str = "opus",
     ) -> dict | None:
         try:
             reply = self.client.structured(
-                tier="opus",
+                tier=tier,
                 system=system,
                 user=self.question(finding),
                 schema=VERIFY_SCHEMA,

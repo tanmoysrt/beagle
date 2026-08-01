@@ -3,7 +3,7 @@ from __future__ import annotations
 from ..config import ReviewCfg, Severity
 from ..llm.client import Budget, LLMClient
 from ..prompts.loader import PromptSet, summary_values
-from .models import Finding, ReviewSummary, count_by_severity, verdict_for
+from .models import Finding, ReviewSummary, count_by_severity, score_for, verdict_for
 from .schemas import OUTPUT_INSTRUCTIONS, SUMMARY_SCHEMA
 
 
@@ -27,12 +27,16 @@ class Summariser:
             counts=count_by_severity(findings),
             coverage=round(coverage, 3),
             verdict=verdict_for(findings, self.cfg.fail_on),
+            score=score_for(findings, coverage),
             confidence=overall_confidence(findings, coverage),
         )
         data = self.ask_model(findings, diff_digest, review_id, budget)
         if isinstance(data, dict):
             summary.description = data.get("description", "").strip()
-            summary.risks = [item for item in data.get("risks", []) if isinstance(item, str)][:3]
+            summary.reasoning = data.get("reasoning", "").strip()
+            summary.attention = [
+                item for item in data.get("attention", []) if isinstance(item, str)
+            ][:2]
             summary.notes = [item for item in data.get("notes", []) if isinstance(item, str)]
         summary.notes.extend(self.security_notes(findings))
         return summary

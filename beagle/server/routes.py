@@ -218,5 +218,5 @@ def schema(request: Request, token: str = Depends(require_token)):
 
 
 @router.get("/guide", response_class=PlainTextResponse)
-def guide(topic: str | None = None):
-    return guide_text(topic)
+def guide(request: Request, topic: str | None = None):
+    return guide_text(topic, service(request).config.github.mention)
