@@ -142,6 +142,9 @@ class LLMClient:
                 }
             ],
             "tool_choice": {"type": "tool", "name": tool_name},
+            # A reasoning model behind a gateway thinks until max_tokens is gone and
+            # then emits an empty tool call. The schema is the place to reason.
+            "thinking": {"type": "disabled"},
         }
         reply = self.send(
             request, prompt_name, review_id, unit, reuse=budget is None or budget.reuse
@@ -169,6 +172,8 @@ class LLMClient:
         except anthropic.APIStatusError as exc:
             if self.thinking_conflict(exc, request):
                 return self.send(disable_thinking(request), prompt_name, review_id, unit)
+            if self.thinking_unsupported(exc, request):
+                return self.send(without_thinking(request), prompt_name, review_id, unit)
             self.log(request, None, started, prompt_name, review_id, unit, error=str(exc))
             raise ProviderError(
                 f"llm request failed ({exc.status_code}): {short(str(exc))}",
@@ -214,6 +219,10 @@ class LLMClient:
             and "tool_choice" in request
             and "thinking" not in request
         )
+
+    def thinking_unsupported(self, exc: anthropic.APIStatusError, request: dict) -> bool:
+        """And some reject the field that turns thinking off."""
+        return exc.status_code == 400 and "thinking" in str(exc).lower() and "thinking" in request
 
     def build_reply(self, message: Any, request: dict) -> Reply:
         usage = self.usage_of(message, request["model"])
@@ -280,6 +289,10 @@ def make_budget(review: ReviewCfg) -> Budget:
 
 def disable_thinking(request: dict) -> dict:
     return {**request, "thinking": {"type": "disabled"}}
+
+
+def without_thinking(request: dict) -> dict:
+    return {key: value for key, value in request.items() if key != "thinking"}
 
 
 def estimate_cost(model: str, fresh_in: int, cached_in: int, out: int) -> float:
