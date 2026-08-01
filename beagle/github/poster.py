@@ -76,7 +76,6 @@ class ReviewPoster:
             resolution_lines(closing, withdrawn, head_sha),
             self.mention,
             self.commit_note(head_sha),
-            result.findings,
         ))
         verdict = result.summary.verdict
         posted = comments or verdict != last_verdict
@@ -211,7 +210,7 @@ class ReviewPoster:
         summary.counts = count_by_severity(findings)
         summary.verdict = verdict_for(findings, self.fail_on)
         self.write_summary(number, render_summary(
-            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha), findings
+            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha)
         ))
 
 
@@ -274,6 +273,8 @@ def finding_body(finding: Finding, inline: bool) -> str:
     patch = patch_block(finding, inline)
     if patch:
         lines += ["", patch]
+    if inline:
+        lines += folded(finding)
     lines += [
         "",
         f"<sub>{finding.category} · confidence {finding.confidence:.0%} · "
@@ -304,22 +305,19 @@ def location(finding: Finding) -> str:
     return f"{finding.file}:{finding.line_start}"
 
 
-def handoff_block(findings: list[Finding], commit: str) -> list[str]:
-    """The findings as a brief a coding agent can act on, folded away by default."""
-    if not findings:
-        return []
-    brief = ["Fix the following in this repository. Change nothing else."]
-    if commit:
-        brief.append(f"Reviewed at {commit}.")
-    brief.append("")
-    for index, finding in enumerate(findings, 1):
-        where = ", ".join(item.label() for item in finding.locations)
-        brief.append(f"{index}. {where} [{finding.severity.value} {finding.category}]"
-                     f" {finding.title}")
-        brief.append(f"   {' '.join(finding.body.split())}")
-        if finding.suggested_patch:
-            brief.append("   suggested replacement:")
-            brief += [f"     {row}" for row in finding.suggested_patch.rstrip().splitlines()]
+def folded(finding: Finding) -> list[str]:
+    """The finding as plain text a coding agent can act on, folded away by default."""
+    where = ", ".join(item.label() for item in finding.locations)
+    brief = [
+        "Fix this in the repository. Change nothing else.",
+        "",
+        f"{where} [{finding.severity.value} {finding.category}] {finding.title}",
+        " ".join(finding.body.split()),
+    ]
+    if finding.suggested_patch:
+        # verbatim: an added space would break the indentation of what it replaces
+        brief.append("suggested replacement:")
+        brief += finding.suggested_patch.rstrip().splitlines()
     return [
         "",
         "<details>",
@@ -339,7 +337,6 @@ def render_summary(
     resolved: list[str],
     mention: str,
     commit: str = "",
-    findings: list[Finding] | None = None,
 ) -> str:
     lines = verdict_block(summary)
 
@@ -350,7 +347,6 @@ def render_summary(
     if resolved:
         lines += ["", "Resolved since the last review:", ""] + resolved
 
-    lines += handoff_block(findings or [], commit.replace("`", ""))
     lines += notes_block(summary)
     footer = [f"Reviewed {commit}"] if commit else []
     footer.append(cost_line(summary))
