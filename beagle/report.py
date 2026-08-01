@@ -49,11 +49,19 @@ def notes_block(summary: dict[str, Any]) -> list[str]:
 
 
 def cost_line(summary: dict[str, Any]) -> str:
-    return (
-        f"${summary.get('cost_usd', 0):.4f} · "
+    """A review that cost nothing reused every answer. Say that, rather than
+    printing zeroes that read like a failure."""
+    if summary.get("reused") and not summary.get("tokens_in"):
+        return f"Nothing changed, so every answer was reused · {summary.get('duration_seconds', 0)}s"
+    parts = [
+        f"${summary.get('cost_usd', 0):.4f}",
         f"{summary.get('tokens_in', 0)} in / {summary.get('tokens_out', 0)} out "
-        f"({summary.get('tokens_cached', 0)} cached) · {summary.get('duration_seconds', 0)}s"
-    )
+        f"({summary.get('tokens_cached', 0)} cached)",
+        f"{summary.get('duration_seconds', 0)}s",
+    ]
+    if summary.get("reused"):
+        parts.insert(1, f"{summary['reused']} answers reused")
+    return " · ".join(parts)
 
 
 def finding_block(finding: dict[str, Any]) -> list[str]:

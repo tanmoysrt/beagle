@@ -25,7 +25,11 @@ def finding_schema(categories: list[str]) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "file": {"type": "string", "description": "Repository-relative path"},
-            "line_start": {"type": "integer", "description": "First line of the new file"},
+            "line_start": {
+                "type": "integer",
+                "description": "The line in the file after the change that the finding is "
+                "about. Count from the +++ side of the diff, not the file on disk.",
+            },
             "line_end": {"type": "integer"},
             "category": {"type": "string", "enum": categories},
             "severity": {"type": "string", "enum": SEVERITIES},
@@ -50,7 +54,9 @@ def finding_schema(categories: list[str]) -> dict[str, Any]:
                 "description": "Every place this same issue occurs",
             },
         },
-        "required": ["file", "category", "severity", "confidence", "title", "body"],
+        "required": [
+            "file", "line_start", "category", "severity", "confidence", "title", "body",
+        ],
         "additionalProperties": False,
     }
 

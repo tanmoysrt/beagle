@@ -100,7 +100,6 @@ class ReviewCfg(Section):
             "performance",
             "correctness",
             "style",
-            "test_gap",
         ]
     )
     max_cost_usd: float = Field(default=2.50, gt=0)

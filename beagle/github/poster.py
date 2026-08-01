@@ -77,8 +77,11 @@ class ReviewPoster:
             self.mention,
             self.commit_note(head_sha),
         ))
+        # A review with no line comment only repeats the summary in another place.
+        # The one exception is asking for changes, which is a state, not a message.
         verdict = result.summary.verdict
-        posted = comments or verdict != last_verdict
+        blocking = verdict == "request_changes" and verdict != last_verdict
+        posted = bool(comments) or blocking
         if posted:
             self.submit(number, head_sha, verdict, result.summary.description, comments)
         return {
