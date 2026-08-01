@@ -113,7 +113,7 @@ What the review costs depends on the code, not on the commit:
 
 A force push can make GitHub mark a comment of Beagle as outdated. Beagle keeps that comment, because a new comment would lose the discussion in the thread.
 
-GitHub accepts a comment only on a line that its own diff contains. A finding can point somewhere else: a line that the change did not touch, but that the change breaks. Beagle reads the diff of GitHub first and puts each such finding in the summary, below the words "These are not on a changed line". Beagle loses no finding.
+GitHub accepts a comment only on a line that its own diff contains. A finding can point somewhere else: a line that the change did not touch, but that the change breaks. Beagle reads the diff of GitHub first. Each such finding goes in the summary, below the words "These are not on a changed line". Beagle loses no finding.
 
 To get only the summary, set `post_style = "summary_only"`.
 
