@@ -69,8 +69,8 @@ class ReviewRunner:
         self.selector = FileSelector(mirror, config.repo.ignore)
         self.instructions = InstructionFinder(mirror, config.context.instruction_files_extra)
         self.context_builder = ContextBuilder(store, embedder, CrossReferences(mirror))
-        self.planner = Planner(client, prompts, config.review.deep_paths)
-        self.risk = RiskTagger(store, config.review.deep_paths)
+        self.planner = Planner(client, prompts)
+        self.risk = RiskTagger(store)
         self.reviewer = UnitReviewer(client, prompts, config.review)
         self.merger = Merger(client, prompts, config.review)
         self.security = SecurityClassifier()
@@ -82,8 +82,6 @@ class ReviewRunner:
     def run(self, request: ReviewRequest, events: EventStream) -> ReviewResult:
         state = ReviewState(request, events, make_budget(self.config.review))
         state.budget.reuse = not request.fresh
-        if request.deep:
-            self.force_deep()
         try:
             return self.execute(state)
         except BudgetExceeded as exc:
@@ -92,11 +90,6 @@ class ReviewRunner:
         except ProviderError as exc:
             events.emit("error", message=str(exc))
             return self.empty_result(state, str(exc))
-
-    def force_deep(self) -> None:
-        """`@beagle review deep` sends every unit to the strongest model."""
-        self.reviewer.cfg = self.reviewer.cfg.model_copy(update={"deep_paths": ["*"]})
-        self.risk.deep_paths = ["*"]
 
     def execute(self, state: ReviewState) -> ReviewResult:
         state.base_sha, state.head_sha, state.diffs, state.skipped = self.resolve_diff(

@@ -24,7 +24,6 @@ class ReviewBody(BaseModel):
     diff: str | None = None
     author: str | None = None
     pr: int | None = None
-    deep: bool = False
     fresh: bool = False
 
 
@@ -56,7 +55,7 @@ def submit_review(body: ReviewBody, request: Request, token: str = Depends(requi
         review_id = f"pr-{body.pr}"
         service(request).events.reset(review_id)
         job_id = queue(request).enqueue(
-            "github_review", {"pr": body.pr, "deep": body.deep, "fresh": body.fresh}, review_id
+            "github_review", {"pr": body.pr, "fresh": body.fresh}, review_id
         )
     else:
         review_id = body.review_id or f"rev-{uuid.uuid4().hex[:12]}"

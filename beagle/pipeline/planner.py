@@ -13,10 +13,9 @@ SINGLE_UNIT_THRESHOLD = 2
 class Planner:
     """Groups changed files into coherent review units and tags risk."""
 
-    def __init__(self, client: LLMClient, prompts: PromptSet, deep_paths: list[str]):
+    def __init__(self, client: LLMClient, prompts: PromptSet):
         self.client = client
         self.prompts = prompts
-        self.deep_paths = deep_paths
 
     def plan(
         self, diffs: list[FileDiff], review_id: str, budget: Budget | None = None
@@ -25,7 +24,7 @@ class Planner:
             return [self.single_unit(diffs)]
 
         system = self.prompts.get("plan").render(
-            plan_values(self.deep_paths, MAX_UNITS, OUTPUT_INSTRUCTIONS["plan"])
+            plan_values(MAX_UNITS, OUTPUT_INSTRUCTIONS["plan"])
         )
         reply = self.client.structured(
             tier="general",

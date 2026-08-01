@@ -24,7 +24,6 @@ Body:
 | `diff` | no | A unified diff. Use this field if the code is not on the server. |
 | `author` | no | The person who asked for the review |
 | `pr` | no | A pull request number. Beagle gets the code from GitHub and writes the result to the pull request. |
-| `deep` | no | With `pr`, use the strongest model on each file |
 | `fresh` | no | Ask the models again instead of using a stored answer |
 
 With `pr`, the identifier is always `pr-<number>` and the other fields are not used. If the GitHub interface is off, the answer is 409.

@@ -191,7 +191,6 @@ class ReviewRequest:
     diff: str | None = None
     author: str | None = None
     index_ref: str | None = None
-    deep: bool = False
     fresh: bool = False
 
 

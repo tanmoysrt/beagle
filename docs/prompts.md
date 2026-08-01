@@ -50,7 +50,7 @@ These are the parts of each prompt:
 | Prompt | Parts |
 | --- | --- |
 | `reviewer.md` | `{{severity_scale}}`, `{{repo_overview}}`, `{{instruction_files}}`, `{{conventions}}`, `{{output_instructions}}` |
-| `plan.md` | `{{deep_paths}}`, `{{max_units}}`, `{{output_instructions}}` |
+| `plan.md` | `{{max_units}}`, `{{output_instructions}}` |
 | `dedup.md` | `{{p5_cap}}`, `{{p4_cap}}`, `{{output_instructions}}` |
 | `verify.md` | `{{severity_scale}}`, `{{output_instructions}}` |
 | `summary.md` | `{{fail_on}}`, `{{output_instructions}}` |

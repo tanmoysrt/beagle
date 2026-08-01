@@ -126,9 +126,8 @@ def reviewer_values(
     }
 
 
-def plan_values(deep_paths: list[str], max_units: int, output_instructions: str) -> dict[str, str]:
+def plan_values(max_units: int, output_instructions: str) -> dict[str, str]:
     return {
-        "deep_paths": ", ".join(deep_paths) or "(none configured)",
         "max_units": str(max_units),
         "output_instructions": output_instructions,
     }

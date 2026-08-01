@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from ..config import ReviewCfg, Severity
 from ..llm.client import Budget, LLMClient
-from ..llm.tiers import tier_for_unit
 from ..prompts.loader import PromptSet, reviewer_values
 from .context import UnitContext
 from .models import Finding, Location, ReviewUnit
@@ -39,9 +38,8 @@ class UnitReviewer:
         review_id: str,
         budget: Budget | None = None,
     ) -> tuple[list[Finding], list[str]]:
-        tier = tier_for_unit(unit.paths, unit.risk_tags, self.cfg.deep_paths)
         reply = self.client.structured(
-            tier=tier,
+            tier="reasoning",
             system=system,
             user=self.user_message(unit, context),
             schema=report_findings_schema(self.cfg.categories),

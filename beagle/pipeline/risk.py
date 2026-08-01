@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..llm.tiers import matches_any
 from ..storage.dao import IndexStore
 from .models import ReviewUnit
 
@@ -31,19 +30,14 @@ class RiskReport:
 class RiskTagger:
     """Tags a unit from the index rather than asking a model."""
 
-    def __init__(self, store: IndexStore, deep_paths: list[str] | None = None):
+    def __init__(self, store: IndexStore):
         self.store = store
-        self.deep_paths = list(deep_paths or [])
 
     def tag(self, unit: ReviewUnit) -> RiskReport:
         names, reached = self.reach(unit.paths)
         evidence: dict[str, str] = {}
         # the change itself is better evidence than something two hops away
         ordered = list(unit.paths) + sorted(names - set(unit.paths))
-
-        for path in unit.paths:
-            if matches_any(path, self.deep_paths):
-                evidence.setdefault("blast_radius", f"{path} is a configured deep path")
 
         for tag, pattern in PATTERNS.items():
             hit = next((name for name in ordered if pattern.search(name)), None)

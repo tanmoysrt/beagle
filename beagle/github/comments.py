@@ -16,7 +16,6 @@ COMMAND_HELP = [
     ("explain", "more detail about the finding in this thread"),
     ("rule: <text>", "record a team convention"),
     ("review", "review the pull request again"),
-    ("review deep", "review again, strongest model on every file"),
     ("rules", "list the conventions"),
     ("status", "the condition of the index and the queue"),
     ("help", "this list"),
@@ -27,7 +26,6 @@ FAST_PATHS = (
     ("dismiss", re.compile(r"^(?:not now|dismiss)\b[:,]?\s*(.*)", re.I | re.S)),
     ("rule", re.compile(r"^rule:\s*(.+)", re.I | re.S)),
     ("explain", re.compile(r"^explain\b\s*(.*)", re.I | re.S)),
-    ("review_deep", re.compile(r"^review\s+deep\b", re.I)),
     ("review", re.compile(r"^review\b", re.I)),
     ("rules", re.compile(r"^rules\b", re.I)),
     ("status", re.compile(r"^status\b", re.I)),
@@ -63,7 +61,7 @@ class CommentRouter:
             return
         self.act(comment, fingerprint, action, argument)
         # a review runs as its own job and reports when it posts
-        if action not in ("review", "review_deep"):
+        if action != "review":
             self.done(comment.number)
 
     def ack(self, comment: Comment) -> None:
@@ -98,12 +96,10 @@ class CommentRouter:
             self.add_rule(comment, fingerprint, argument)
         elif action == "explain":
             self.explain(comment, fingerprint, argument)
-        elif action in ("review", "review_deep"):
+        elif action == "review":
             # the 👀 on the pull request is the acknowledgement; a reply would be a
             # second notification for the same thing
-            self.service.enqueue(
-                "github_review", {"pr": comment.number, "deep": action == "review_deep"}
-            )
+            self.service.enqueue("github_review", {"pr": comment.number})
         elif action == "rules":
             self.reply(comment, rules_block(self.service.rules.active(), self.mention))
         elif action == "status":

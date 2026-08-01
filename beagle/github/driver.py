@@ -45,7 +45,7 @@ class GithubDriver:
 
     def handle(self, kind: str, payload: dict[str, Any]) -> None:
         if kind == "github_review":
-            self.review(payload["pr"], payload.get("deep", False), payload.get("fresh", False))
+            self.review(payload["pr"], payload.get("fresh", False))
         elif kind == "github_comment":
             self.comments.handle(Comment(**payload))
         elif kind == "github_feedback":
@@ -53,7 +53,7 @@ class GithubDriver:
         else:
             raise BeagleError(f"unknown job kind: {kind}")
 
-    def review(self, number: int, deep: bool = False, fresh: bool = False) -> dict[str, Any]:
+    def review(self, number: int, fresh: bool = False) -> dict[str, Any]:
         pull = self.client.pull(number)
         if not self.service.mirror.exists:
             self.service.mirror.ensure()
@@ -67,7 +67,6 @@ class GithubDriver:
             # never one for each pull request.
             index_ref=base,
             author=(pull.get("user") or {}).get("login"),
-            deep=deep,
             fresh=fresh,
         )
         result = self.service.run(request)

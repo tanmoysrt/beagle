@@ -5,7 +5,7 @@ produce the final list.
   keeping the clearest body and listing every location.
 - Drop findings that restate one another at different severities; keep the
   best-supported severity.
-- Enforce caps: at most {{p5_cap}} P5 and {{p4_cap}} P4 findings — keep the
+- Enforce caps: at most {{p5_cap}} P5 and {{p4_cap}} P4 findings. Keep the
   highest-impact ones. Never drop or weaken security findings.
 - Do not reword bodies beyond what merging requires. Do not add findings.
 

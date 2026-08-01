@@ -108,8 +108,7 @@ beagle/
 │   └── calibration.py   corrects the confidence for each category
 │
 ├── llm/
-│   ├── client.py        the model calls, the cost budget, and answer reuse
-│   └── tiers.py         which model each unit gets
+│   └── client.py        the model calls, the cost budget, and answer reuse
 │
 ├── scan/
 │   └── secrets.py       a local scan for keys; no model, no cost
@@ -303,7 +302,7 @@ Beagle stops when the budget is full. It writes the names of the parts that did 
 
 `llm/client.py` makes each call. One `Budget` object holds the cost limit and the time limit of the whole review. Each answer must agree with a JSON schema from `pipeline/schemas.py`.
 
-`llm/tiers.py` selects the model. A unit with a risk tag gets the strongest model. A unit that agrees with `deep_paths` gets the strongest model. Each other unit gets the default model.
+The reasoning model reviews every unit. The general model does the plan, the merge, the summary, and a reply to a comment. Only a security or P0 finding gets the reasoning model again for the second check.
 
 Beagle keeps each call in `llm_log.db`: the request, the answer, the tokens, and the cost. This log has two uses. It shows the cost for each review, and it makes answer reuse possible.
 

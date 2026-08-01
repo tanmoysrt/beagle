@@ -120,7 +120,6 @@ In the table below, `@beagle` is the account that `github.mention` names.
 | `@beagle explain` | Beagle answers with more detail |
 | `@beagle rule: <text>` | Beagle records a team convention |
 | `@beagle review` | Beagle reviews the pull request again |
-| `@beagle review deep` | The same, with the strongest model on each file |
 | `@beagle rules` | Beagle lists the conventions |
 | `@beagle status` | Beagle reports the condition of the index |
 | `@beagle help` | Beagle lists these commands |
