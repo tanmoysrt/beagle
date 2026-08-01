@@ -67,6 +67,8 @@ The summary starts with a confidence score out of 5. Then one sentence tells you
 
 The last line of the summary gives the commit that Beagle read: the short hash and the subject of the message. So you know which push the review speaks about.
 
+The summary also holds a closed block, "Give this to a coding agent". Open it and you find each finding as plain text: the path, the lines, the level, and what is wrong. Copy the block into your own tool and it has all it needs to make the changes. Beagle does not write the changes itself.
+
 Each line comment contains the level, the title, and the explanation. If the change is a replacement of the same lines, the comment also contains a GitHub suggestion block.
 
 Beagle sets the state of the review:

@@ -76,6 +76,7 @@ class ReviewPoster:
             resolution_lines(closing, withdrawn, head_sha),
             self.mention,
             self.commit_note(head_sha),
+            result.findings,
         ))
         verdict = result.summary.verdict
         posted = comments or verdict != last_verdict
@@ -120,11 +121,15 @@ class ReviewPoster:
             if key in ReviewSummary.__dataclass_fields__
         })
         rows = core.query(
-            "select severity, category from findings where review_id = ? and status = 'open'",
+            "select file, line_start, line_end, category, severity, title, body, suggested_patch"
+            " from findings where review_id = ? and status = 'open' order by severity",
             (f"pr-{number}",),
         )
         findings = [
-            Finding(file="", category=item[1], severity=Severity(item[0]), title="", body="")
+            Finding(
+                file=item[0], line_start=item[1], line_end=item[2], category=item[3],
+                severity=Severity(item[4]), title=item[5], body=item[6], suggested_patch=item[7],
+            )
             for item in rows
         ]
         return summary, findings, row[1]
@@ -206,7 +211,7 @@ class ReviewPoster:
         summary.counts = count_by_severity(findings)
         summary.verdict = verdict_for(findings, self.fail_on)
         self.write_summary(number, render_summary(
-            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha)
+            summary.to_dict(), [], [], self.mention, self.commit_note(head_sha), findings
         ))
 
 
@@ -299,12 +304,42 @@ def location(finding: Finding) -> str:
     return f"{finding.file}:{finding.line_start}"
 
 
+def handoff_block(findings: list[Finding], commit: str) -> list[str]:
+    """The findings as a brief a coding agent can act on, folded away by default."""
+    if not findings:
+        return []
+    brief = ["Fix the following in this repository. Change nothing else."]
+    if commit:
+        brief.append(f"Reviewed at {commit}.")
+    brief.append("")
+    for index, finding in enumerate(findings, 1):
+        where = ", ".join(item.label() for item in finding.locations)
+        brief.append(f"{index}. {where} [{finding.severity.value} {finding.category}]"
+                     f" {finding.title}")
+        brief.append(f"   {' '.join(finding.body.split())}")
+        if finding.suggested_patch:
+            brief.append("   suggested replacement:")
+            brief += [f"     {row}" for row in finding.suggested_patch.rstrip().splitlines()]
+    return [
+        "",
+        "<details>",
+        "<summary>Give this to a coding agent</summary>",
+        "",
+        "```",
+        *brief,
+        "```",
+        "",
+        "</details>",
+    ]
+
+
 def render_summary(
     summary: dict,
     unplaced: list[Finding],
     resolved: list[str],
     mention: str,
     commit: str = "",
+    findings: list[Finding] | None = None,
 ) -> str:
     lines = verdict_block(summary)
 
@@ -315,6 +350,7 @@ def render_summary(
     if resolved:
         lines += ["", "Resolved since the last review:", ""] + resolved
 
+    lines += handoff_block(findings or [], commit.replace("`", ""))
     lines += notes_block(summary)
     footer = [f"Reviewed {commit}"] if commit else []
     footer.append(cost_line(summary))
