@@ -5,7 +5,8 @@ __pycache__
 *.egg-info/
 build/
 dist/
-data/
+data/*
+!data/config.example.toml
 *.db
 *.db-wal
 *.db-shm

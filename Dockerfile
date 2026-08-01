@@ -5,7 +5,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml README.md healthcheck.py ./
+COPY pyproject.toml README.md LICENSE healthcheck.py ./
 COPY beagle ./beagle
 RUN pip install --no-cache-dir .
 

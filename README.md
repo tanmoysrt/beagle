@@ -4,11 +4,18 @@ Beagle is an AI code reviewer. It reads a diff and it writes findings. One serve
 
 Beagle keeps an index of the code and a memory of the feedback of the team. It gives a level from P0 to P5 to each finding. It reports few findings, because a reviewer that reports too much is not useful.
 
-Full documentation is in [docs/](docs/README.md).
+## How you use it
 
-## If you only want reviews
+| Way | What Beagle does | Document |
+| --- | --- | --- |
+| Pull requests | Beagle reviews each push and writes comments. A person answers with `@beagle ...`. | [docs/github.md](docs/github.md) |
+| Terminal, or CI | You ask for a review of a branch or of a diff. The client writes JSON in a pipeline. | [cli/README.md](cli/README.md) |
 
-You do not need the server. The client is one file. It needs Python 3.7 or newer, and nothing else.
+You do not call the HTTP interface yourself. The client and the GitHub interface do it for you.
+
+## The client
+
+The client is one file. It needs Python 3.7 and nothing else.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tanmoysrt/beagle/main/cli/install.sh | bash
@@ -16,51 +23,30 @@ beagle login https://beagle.internal:8080 --token <token> --author you
 beagle review
 ```
 
-Refer to [cli/README.md](cli/README.md). The remainder of this page is for the person who operates the server.
+Refer to [cli/README.md](cli/README.md) for each command, the exit codes, and the use in CI.
 
-## Start the server
+## The server
 
-```bash
-git clone https://github.com/tanmoysrt/beagle
-cd beagle
-./install.sh
-```
-
-Write your two API keys in `data/config.toml`. Then use these commands:
+Write the configuration first:
 
 ```bash
-beagle --config data/config.toml doctor
-beagle --config data/config.toml index
-beagle --config data/config.toml review my-branch
+mkdir -p data
+curl -fsSL https://raw.githubusercontent.com/tanmoysrt/beagle/main/data/config.example.toml -o data/config.toml
+chmod 600 data/config.toml
 ```
 
-You can also use a container:
+Write your two API keys and the URL of your repository in that file. Then start the container:
 
 ```bash
-docker build -t beagle .
-docker run -p 8080:8080 -v "$PWD/data:/data" beagle
+docker run -d --name beagle -p 8080:8080 -v "$PWD/data:/data" ghcr.io/tanmoysrt/beagle
 ```
 
-Refer to [docs/install.md](docs/install.md).
+Refer to [docs/install.md](docs/install.md) for the other procedures. Refer to [docs/configuration.md](docs/configuration.md) for each key.
 
-## Ask for a review
+## Documentation
 
-```bash
-curl -X POST localhost:8080/v1/reviews \
-  -H "Authorization: Bearer <token>" \
-  -H "content-type: application/json" \
-  -d '{"head": "my-branch"}'
+[docs/README.md](docs/README.md) lists all the documents. [docs/architecture.md](docs/architecture.md) shows the parts, the folders, and the flows.
 
-curl -N localhost:8080/v1/reviews/<review_id>/stream \
-  -H "Authorization: Bearer <token>"
-```
+## License
 
-The stream is NDJSON. One line is one event. Refer to [docs/reviews.md](docs/reviews.md).
-
-## For coding agents
-
-```bash
-beagle guide > AGENT_NOTES.md
-```
-
-Beagle makes this text from its own routes and its own configuration model. The text cannot become different from the software.
+MIT. Refer to [LICENSE](LICENSE).

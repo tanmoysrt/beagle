@@ -1,0 +1,51 @@
+[server]
+port = 8080
+auth_tokens = ["CHANGE-ME"]
+max_parallel_reviews = 5
+
+[repo]
+url = "https://github.com/acme/api"
+default_base = "main"
+ignore = []
+
+[llm]
+base_url = "https://api.anthropic.com"
+api_key = "PASTE-ANTHROPIC-KEY"
+[llm.headers]
+[llm.models]
+haiku = "claude-haiku-4-5"
+sonnet = "claude-sonnet-5"
+opus = "claude-opus-5"
+
+[embeddings]
+base_url = "https://api.openai.com/v1"
+api_key = "PASTE-OPENAI-KEY"
+model = "text-embedding-3-large"
+dims = 1024
+batch_size = 128
+[embeddings.headers]
+
+# Optional. Beagle reviews pull requests when both keys have a value.
+# [github]
+# token = "github_pat_..."
+# repo = "acme/api"
+
+[review]
+min_severity = "P5"
+fail_on = "P1"
+max_findings = 12
+max_cost_usd = 2.00
+token_budget = 60000
+deep_paths = []
+
+[context]
+instruction_files = "auto"
+instruction_files_extra = []
+instruction_files_budget = 4000
+
+[prompts]
+
+[memory]
+suppress_similarity = 0.92
+downrank_similarity = 0.80
+suppress_similarity_security = 0.97

@@ -51,11 +51,17 @@ Read a script before you send it to a shell. This is good practice for all scrip
 
 ## Procedure with Docker
 
-1. Make a copy of the example configuration file.
+You do not need a clone for this procedure. The image is at `ghcr.io/tanmoysrt/beagle`.
+
+1. Make the configuration file from the example.
 
    ```bash
-   cp data/config.example.toml data/config.toml
+   mkdir -p data
+   curl -fsSL https://raw.githubusercontent.com/tanmoysrt/beagle/main/data/config.example.toml \
+       -o data/config.toml
    ```
+
+   With a clone, use `cp data/config.example.toml data/config.toml` instead.
 
 2. Open `data/config.toml`. Write your two API keys in the file. Write the URL of your repository.
 
@@ -65,16 +71,18 @@ Read a script before you send it to a shell. This is good practice for all scrip
    chmod 600 data/config.toml
    ```
 
-4. Build the image.
+4. Start the container.
 
    ```bash
-   docker build -t beagle .
+   docker run -d --name beagle -p 8080:8080 -v "$PWD/data:/data" ghcr.io/tanmoysrt/beagle
    ```
 
-5. Start the container.
+   A workflow publishes this image from the default branch. Use a tag such as `:0.1` to hold one version. To build the image yourself, use `docker build -t beagle .` in a clone.
+
+5. Look at the log.
 
    ```bash
-   docker run -d --name beagle -p 8080:8080 -v "$PWD/data:/data" beagle
+   docker logs -f beagle
    ```
 
 6. Make sure that the server operates.
