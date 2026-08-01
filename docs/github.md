@@ -5,7 +5,9 @@ Beagle can review pull requests and can learn from the replies of the team. The 
 ## What you need
 
 - A machine account, for example `beagle-bot`. Do not use a personal account.
-- A fine-grained personal access token for that account, with these permissions on the repository: **Contents: read** and **Pull requests: write**.
+- A token for that account. A fine-grained token needs **Contents: read** and **Pull requests: write** on the repository. A classic token needs the `repo` scope, or `public_repo` for a public repository.
+
+Beagle does not push to the repository. It only reads the repository and writes comments. So the account does not need to be a collaborator on a public repository.
 
 Put the token in the configuration:
 
@@ -124,6 +126,7 @@ A 👍 on a comment of Beagle counts as agreement. A 👎 counts as an error. A 
 
 ## Safety
 
+- Beagle never writes to the repository. It writes comments and review states only. It makes no commit, no branch, and no tag.
 - The text of a comment only selects an action from a fixed list. Beagle never executes it.
 - The text of a comment never enters the review of this or any other pull request.
 - Beagle ignores its own comments. Each comment that Beagle writes holds a marker, and Beagle does not answer a comment that holds one.
@@ -141,4 +144,4 @@ Use `beagle stats` to see the money that Beagle used.
 
 ## When something does not operate
 
-Use `beagle doctor`. It shows a `github` check. The check gives the name of the repository and states if the token gives write access. A token with read access only can review, but it cannot write a comment.
+Use `beagle doctor`. It shows a `github` check. The check gives the name of the repository and tells you if the repository is public or private. If the token cannot reach the repository, the check fails and gives the answer of GitHub.

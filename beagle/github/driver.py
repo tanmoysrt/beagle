@@ -95,16 +95,19 @@ class GithubDriver:
         )
 
     def check(self) -> dict[str, Any]:
-        """A token with the wrong scopes is better found here than at the first push."""
+        """A token that cannot reach the repository is better found here than at the first push.
+
+        Beagle never pushes. It reads the repository and writes comments, and a
+        comment on a repository you can read needs no collaborator role.
+        """
         try:
             info = self.client.repo_info()
         except Exception as exc:
             return {"name": "github", "ok": False, "detail": str(exc)}
-        writable = (info.get("permissions") or {}).get("push", False)
         return {
             "name": "github",
             "ok": True,
-            "detail": f"{info.get('full_name')}, {'write' if writable else 'read only'} access",
+            "detail": f"{info.get('full_name')}, {'private' if info.get('private') else 'public'}",
         }
 
     def close(self) -> None:
