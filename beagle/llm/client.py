@@ -221,8 +221,13 @@ class LLMClient:
         )
 
     def thinking_unsupported(self, exc: anthropic.APIStatusError, request: dict) -> bool:
-        """And some reject the field that turns thinking off."""
-        return exc.status_code == 400 and "thinking" in str(exc).lower() and "thinking" in request
+        """And some make it mandatory. They say so as "reasoning", not "thinking"."""
+        text = str(exc).lower()
+        return (
+            exc.status_code == 400
+            and ("thinking" in text or "reasoning" in text)
+            and "thinking" in request
+        )
 
     def build_reply(self, message: Any, request: dict) -> Reply:
         usage = self.usage_of(message, request["model"])
