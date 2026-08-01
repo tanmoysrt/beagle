@@ -91,14 +91,14 @@ class ReviewPoster:
         # The one exception is asking for changes, which is a state, not a message.
         verdict = result.summary.verdict
         blocking = verdict == "request_changes" and verdict != last_verdict
-        posted = bool(comments) or blocking
-        if posted:
-            self.submit(number, head_sha, verdict, result.summary.description, comments)
+        delivered = 0
+        if comments or blocking:
+            delivered = self.submit(number, head_sha, verdict, comments)
         return {
-            "added": len(comments),
+            "added": delivered,
             "resolved": len(closing),
             "in_summary": len(unplaced),
-            "review_posted": bool(posted),
+            "review_posted": bool(comments or blocking),
         }
 
     def write_summary(self, number: int, body: str) -> None:
@@ -176,9 +176,9 @@ class ReviewPoster:
         """A batched review is rejected whole, so a finding GitHub will not take
         must move to the summary before the request goes out, not after it fails.
 
-        A finding on a file in the diff always gets a comment. If its line is not
-        one GitHub will take, the comment goes on the file instead of on a line.
-        Only a finding on a file the diff does not touch has nowhere to go.
+        A finding on a file in the diff always gets a comment, on its own line
+        when GitHub takes that line and on the nearest shown line when it does
+        not. Only a finding on a file the diff never touches has nowhere to go.
         """
         if not self.inline:
             return [], list(findings)
@@ -190,27 +190,40 @@ class ReviewPoster:
 
         comments, unplaced = [], []
         for finding in findings:
-            if finding.file not in commentable:
+            lines = commentable.get(finding.file)
+            if not lines:
                 unplaced.append(finding)
                 continue
-            comments.append(comment_payload(finding, commentable[finding.file]))
+            comments.append(comment_payload(finding, lines))
         return comments, unplaced
 
-    def submit(
-        self, number: int, head_sha: str, verdict: str, body: str, comments: list[dict]
-    ) -> None:
-        """The review carries the findings and the state. The summary lives elsewhere,
-        so the body is only the one line GitHub needs for REQUEST_CHANGES."""
+    def submit(self, number: int, head_sha: str, verdict: str, comments: list[dict]) -> int:
+        """The review carries the findings and the state. The summary lives in its
+        own comment, so the body stays empty and the pull request does not show
+        the same sentence twice. GitHub allows an empty body when comments come
+        with it, and demands one only to request changes, where it gets a link.
+
+        Returns how many comments actually went out, which is not how many were
+        offered when GitHub refuses the batch.
+        """
         event = "REQUEST_CHANGES" if verdict == "request_changes" else "COMMENT"
-        body = body.strip() or "See the summary comment."
+        body = self.summary_link(number) if event == "REQUEST_CHANGES" else ""
         for attempt in (event, "COMMENT"):
             try:
                 self.github.submit_review(number, attempt, body, comments, head_sha)
-                return
+                return len(comments)
             except GithubError as exc:
                 # GitHub refuses REQUEST_CHANGES on a pull request the token's own account opened.
                 log.warning("review on #%s rejected as %s: %s", number, attempt, exc)
                 comments = []  # a rejected batch must not post twice
+        return 0
+
+    def summary_link(self, number: int) -> str:
+        stored = self.sync.pr(number).get("summary_comment")
+        if not stored:
+            return "Changes requested. The summary is in the comments."
+        repo = self.github.repo
+        return f"[Beagle's summary](https://github.com/{repo}/pull/{number}#issuecomment-{stored})"
 
     def refresh(self, number: int) -> None:
         """Rewrite the summary in place after a finding was withdrawn.
@@ -232,11 +245,15 @@ class ReviewPoster:
 
 
 def comment_payload(finding: Finding, commentable: set[int]) -> dict:
-    """A line comment when the line is in the diff, otherwise a comment on the file."""
+    """A comment on the line, or on the nearest line of the same file that the
+    diff shows. A batched review takes no file-level comment, so a finding whose
+    line is missing or outside a hunk goes to the closest line rather than to
+    the summary, where it would be further from the code it is about."""
     body = finding_body(finding, inline=True)
-    line = finding.line_end or finding.line_start
-    if not line or line <= 0 or line not in commentable:
-        return {"body": body, "path": finding.file, "subject_type": "file"}
+    line = finding.line_end or finding.line_start or 0
+    if line <= 0 or line not in commentable:
+        line = min(commentable, key=lambda number: abs(number - line))
+        return {"body": body, "path": finding.file, "side": "RIGHT", "line": line}
     payload = {"body": body, "path": finding.file, "side": "RIGHT", "line": line}
     start = finding.line_start
     if start and 0 < start < line and start in commentable:
