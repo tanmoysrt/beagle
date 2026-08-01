@@ -29,11 +29,19 @@ class open_service:
 
 
 def serve(args) -> int:
+    import logging
     import uvicorn
 
     from ..server.app import build_app
 
     config = load_config(args.config).config
+    # Without this only uvicorn talks, and the poller, the poster and every
+    # warning about GitHub go nowhere.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     uvicorn.run(build_app(args.config), host="0.0.0.0", port=config.server.port, log_level="info")
     return 0
 

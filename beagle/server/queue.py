@@ -114,6 +114,7 @@ class JobQueue:
             self.run_job(job)
 
     def run_job(self, job: dict) -> None:
+        log.info("job %s: %s %s", job["id"], job["kind"], job.get("review_id") or "")
         try:
             self.handler(job["kind"], job["payload"])
             self.finish(job["id"], "done")

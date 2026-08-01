@@ -122,6 +122,8 @@ class Poller:
         for comment in comments:
             if comment["id"] <= mark or command_text(comment.get("body") or "", self.cfg.mention) is None:
                 continue
+            log.info("queueing a %s comment on #%s from %s", kind, number,
+                     (comment.get("user") or {}).get("login"))
             self.enqueue(
                 "github_comment",
                 Comment(
