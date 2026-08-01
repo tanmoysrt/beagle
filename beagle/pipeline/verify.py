@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import re
+
 from ..config import Severity
 from ..llm.client import Budget, LLMClient
 from ..prompts.loader import PromptSet, verify_values
@@ -8,6 +11,18 @@ from .review import clamp, coerce_severity
 from .schemas import OUTPUT_INSTRUCTIONS, VERIFY_SCHEMA
 
 SHAKY_CONFIDENCE = 0.75
+
+# A rewritten body that talks about the finding is the verifier thinking aloud,
+# not a finding. The author should never read it.
+WORKINGS = re.compile(
+    r"\bdowngrad|\bupgrad(?:e|ing) to p\d|\bthis is rated\b|\bthe finding is\b"
+    r"|\bwe cannot\b|\bi cannot confirm\b|\bconfidence\b|\bp\d requires\b"
+    r"|\bthe reviewer\b|\bverdict\b",
+    re.I,
+)
+
+
+log = logging.getLogger("beagle.pipeline.verify")
 
 
 class Verifier:
@@ -111,8 +126,11 @@ class Verifier:
         if verdict.get("verdict") == "revise":
             if verdict.get("severity"):
                 finding.severity = coerce_severity(verdict["severity"])
-            if verdict.get("body"):
-                finding.body = verdict["body"].strip()
+            body = (verdict.get("body") or "").strip()
+            if body and WORKINGS.search(body):
+                log.info("kept the reviewer's wording: the revision was workings, not a finding")
+            elif body:
+                finding.body = body
         if verdict.get("confidence") is not None:
             finding.confidence = clamp(verdict["confidence"])
         elif verdict.get("verdict") == "confirm":

@@ -82,7 +82,8 @@ class Summariser:
                     f"Security finding in non-application code kept at "
                     f"{finding.severity.value}: {finding.file}"
                 )
-            elif finding.metadata.get("severity_forced"):
+            elif finding.metadata.get("severity_forced") and finding.severity is Severity.P0:
+                # the second check can lower it again, and then the note is a lie
                 notes.append(
                     f"Security finding in application code raised from "
                     f"{finding.metadata['severity_forced']} to P0: {finding.file}"

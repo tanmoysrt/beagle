@@ -113,9 +113,13 @@ VERIFY_SCHEMA = {
     "properties": {
         "verdict": {"type": "string", "enum": ["confirm", "revise", "reject"]},
         "severity": {"type": "string", "enum": SEVERITIES},
-        "body": {"type": "string"},
+        "body": {
+            "type": "string",
+            "description": "The corrected finding as the author reads it, not your "
+            "reasoning about it. Omit unless the wording itself needs changing.",
+        },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "reason": {"type": "string"},
+        "reason": {"type": "string", "description": "Why, for Beagle's log. Never shown."},
     },
     "required": ["verdict"],
     "additionalProperties": False,
