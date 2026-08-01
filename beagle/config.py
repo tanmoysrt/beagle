@@ -63,9 +63,9 @@ class LLMCfg(Section):
 
 
 class EmbeddingsCfg(Section):
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str = "https://openrouter.ai/api/v1"
     api_key: str
-    model: str
+    model: str = "text-embedding-3-large"
     dims: int = Field(default=1024, ge=8, le=8192)
     batch_size: int = Field(default=128, ge=1, le=2048)
     headers: dict[str, str] = Field(default_factory=dict)

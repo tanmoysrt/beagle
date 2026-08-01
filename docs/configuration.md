@@ -62,9 +62,9 @@ Use `moonshotai/kimi-k2.6` if you prefer Moonshot. Do not use `moonshotai/kimi-k
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `base_url` | `"https://api.openai.com/v1"` | The address of the embeddings service |
+| `base_url` | `"https://openrouter.ai/api/v1"` | The address of the embeddings service |
 | `api_key` | none. You must give a value. | The key |
-| `model` | none. You must give a value. | The name of the embeddings model |
+| `model` | `"text-embedding-3-large"` | The name of the embeddings model |
 | `dims` | `1024` | The number of dimensions of each vector |
 | `batch_size` | `128` | The number of blocks in one request |
 | `headers` | `{}` | More headers |
