@@ -30,12 +30,11 @@ PYTHON_QUERIES = {
     """,
 }
 
-TS_QUERIES = {
+JS_QUERIES = {
     "definitions": """
         (function_declaration name: (identifier) @name) @def
         (generator_function_declaration name: (identifier) @name) @def
         (class_declaration name: (_) @name) @def
-        (interface_declaration name: (_) @name) @def
         (method_definition name: (_) @name) @def
         (variable_declarator name: (identifier) @name value: (arrow_function)) @def
         (variable_declarator name: (identifier) @name value: (function_expression)) @def
@@ -49,6 +48,13 @@ TS_QUERIES = {
         (call_expression function: (member_expression property: (property_identifier) @callee))
         (new_expression constructor: (identifier) @callee)
     """,
+}
+
+# The javascript grammar has no interface_declaration, and one unknown node type
+# makes tree-sitter reject the whole query.
+TS_QUERIES = {
+    **JS_QUERIES,
+    "definitions": JS_QUERIES["definitions"] + "(interface_declaration name: (_) @name) @def\n",
 }
 
 GO_QUERIES = {
@@ -101,7 +107,7 @@ GRAMMAR_LOADERS = {
     "python": (tree_sitter_python.language, PYTHON_QUERIES),
     "typescript": (tree_sitter_typescript.language_typescript, TS_QUERIES),
     "tsx": (tree_sitter_typescript.language_tsx, TS_QUERIES),
-    "javascript": (tree_sitter_javascript.language, TS_QUERIES),
+    "javascript": (tree_sitter_javascript.language, JS_QUERIES),
     "go": (tree_sitter_go.language, GO_QUERIES),
 }
 

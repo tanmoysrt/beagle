@@ -39,8 +39,6 @@ def chunk_file(path: str, source: str, symbols: list[Symbol]) -> list[Chunk]:
 
 def make_chunk(path: str, symbol: Symbol, lines: list[str]) -> Chunk | None:
     body = "\n".join(lines[symbol.start_line - 1 : symbol.end_line])
-    if len(body) > MAX_CHUNK_CHARS:
-        body = body[:MAX_CHUNK_CHARS] + "\n… truncated …"
     return build(path, symbol.start_line, symbol.end_line, body, symbol_key(path, symbol))
 
 
@@ -67,6 +65,10 @@ def whole_file_chunks(path: str, lines: list[str]) -> list[Chunk]:
 def build(path: str, start_line: int, end_line: int, body: str, key: str | None) -> Chunk | None:
     if len(body.strip()) < MIN_CHUNK_CHARS:
         return None
+    # Every chunk is one embedding input, and an endpoint rejects an input that
+    # is too long, so the cap belongs here and not at each call site.
+    if len(body) > MAX_CHUNK_CHARS:
+        body = body[:MAX_CHUNK_CHARS] + "\n… truncated …"
     return Chunk(
         path=path,
         start_line=start_line,
