@@ -15,10 +15,22 @@ from ..storage.dao import CallLog
 
 # Rough per-million-token rates, used only for budget accounting and the cost
 # line in a review. Operators on a gateway can be billed differently.
+# in, out, and the share of the input rate that a cached read costs. The first
+# key that appears in the model name wins, so put the specific names first.
 PRICES = {
-    "haiku": (1.00, 5.00),
-    "sonnet": (3.00, 15.00),
-    "opus": (5.00, 25.00),
+    "deepseek-v4-flash-0731": (0.14, 0.28, 0.02),
+    "deepseek-v4-flash": (0.14, 0.28, 0.20),
+    "deepseek-v4-pro": (0.435, 0.87, 0.01),
+    "deepseek-v3.2": (0.27, 0.40, 0.50),
+    "deepseek": (0.30, 1.00, 0.20),
+    "kimi-k2.7-code": (0.73, 3.50, 0.21),
+    "kimi": (0.60, 2.50, 0.25),
+    "glm-5.2": (0.76, 2.39, 0.19),
+    "glm-4.7": (0.40, 1.75, 0.20),
+    "glm": (0.95, 2.55, 0.21),
+    "haiku": (1.00, 5.00, 0.10),
+    "sonnet": (3.00, 15.00, 0.10),
+    "opus": (5.00, 25.00, 0.10),
 }
 
 
@@ -271,11 +283,11 @@ def disable_thinking(request: dict) -> dict:
 
 def estimate_cost(model: str, fresh_in: int, cached_in: int, out: int) -> float:
     name = model.lower()
-    for key, (price_in, price_out) in PRICES.items():
+    for key, (price_in, price_out, cached_ratio) in PRICES.items():
         if key in name:
-            # cached input reads at roughly a tenth of the input rate
             return round(
-                (fresh_in * price_in + cached_in * price_in * 0.1 + out * price_out) / 1_000_000,
+                (fresh_in * price_in + cached_in * price_in * cached_ratio + out * price_out)
+                / 1_000_000,
                 6,
             )
     return 0.0
