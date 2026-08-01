@@ -6,7 +6,7 @@ import time
 from ..config import Config, Severity
 from ..errors import BudgetExceeded, ProviderError
 from ..index.embedder import ChunkEmbedder
-from ..llm.client import Budget, LLMClient, make_budget
+from ..llm.client import LLMClient, make_budget
 from ..prompts.loader import PromptSet
 from ..repo.diff import FileDiff, parse_diff
 from ..repo.mirror import Mirror
@@ -14,13 +14,14 @@ from ..repo.selection import FileSelector
 from ..scan.secrets import SecretScanner
 from ..storage.dao import CallLog, IndexStore
 from ..storage.migrations import utc_now
-from .context import ContextBuilder, UnitContext
+from .context import ContextBuilder
 from .dedup import Merger
 from .events import EventStream
 from .instructions import InstructionFinder
 from ..memory.filter import MemoryFilter
 from .models import (
     Finding,
+    ReviewUnit,
     ReviewRequest,
     ReviewResult,
     ReviewState,

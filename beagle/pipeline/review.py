@@ -53,7 +53,7 @@ class UnitReviewer:
         entries, anomaly = read_entries(reply.data, "findings")
         findings = [
             finding
-            for finding in (self.finding_from(raw, unit, context, tier) for raw in entries)
+            for finding in (self.finding_from(raw, unit, context) for raw in entries)
             if finding is not None
         ]
         return findings, [f"{unit.key}: {anomaly}"] if anomaly else []
@@ -67,7 +67,7 @@ class UnitReviewer:
         return "\n".join(header) + "\n\n" + context.render()
 
     def finding_from(
-        self, raw: dict, unit: ReviewUnit, context: UnitContext, tier: str
+        self, raw: dict, unit: ReviewUnit, context: UnitContext
     ) -> Finding | None:
         title = (raw.get("title") or "").strip()
         body = (raw.get("body") or "").strip()
@@ -89,7 +89,7 @@ class UnitReviewer:
             locations=locations,
             unit=unit.key,
             context_used=context_label(context),
-            metadata={"tier": tier, "risk_tags": unit.risk_tags},
+            metadata={"risk_tags": unit.risk_tags},
         )
 
 
