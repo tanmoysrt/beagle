@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import uuid
 from typing import Any, Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,6 +39,13 @@ class RuleBody(BaseModel):
     author: str | None = None
 
 
+def default_review_id(body: "ReviewBody") -> str:
+    seed = json.dumps(
+        [body.base, body.head, body.diff], sort_keys=True, default=str
+    ).encode()
+    return f"rev-{hashlib.sha256(seed).hexdigest()[:12]}"
+
+
 def service(request: Request):
     return request.app.state.service
 
@@ -58,7 +65,10 @@ def submit_review(body: ReviewBody, request: Request, token: str = Depends(requi
             "github_review", {"pr": body.pr, "fresh": body.fresh}, review_id
         )
     else:
-        review_id = body.review_id or f"rev-{uuid.uuid4().hex[:12]}"
+        # A caller that names its review keeps that name. One that does not gets
+        # a name made from what it asked about, so a harness that posts the same
+        # comparison twice reuses the answers instead of paying again.
+        review_id = body.review_id or default_review_id(body)
         payload = body.model_dump()
         payload["review_id"] = review_id
         # Clear the old run now, not when the worker starts: a client that reads

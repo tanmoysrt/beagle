@@ -54,7 +54,18 @@ Beagle also starts this review by itself. Refer to [github.md](github.md).
 
 A person who works on a change asks for a review many times. Beagle does not pay for the same question twice.
 
-Each call to a model is identified by everything the model sees: the prompt, the diff of the unit, the related code, and the conventions of the team. Beagle keeps the answer to each call. If the same call occurs again, Beagle gives the stored answer. The call costs no money and no time.
+Each call to a model is identified by everything the model sees: the prompt, the diff of the unit, the related code, and the conventions of the team. Beagle keeps the answer to each call. If the same call occurs again in the same review, Beagle gives the stored answer. The call costs no money and no time.
+
+A stored answer never crosses from one review to another. Two pull requests can carry the same change. They are still two pull requests, and the second one gets a review of its own. The name of the review decides this:
+
+| Who asks | The name of the review |
+| --- | --- |
+| GitHub | `pr-<number>` |
+| `beagle review` | `cli-<base>..<ref>` |
+| Your own tool, with `review_id` | The name you give |
+| Your own tool, with no name | A name made from the base, the head, and the diff |
+
+So a tool that asks the same question twice gets the answer again for free. A tool that asks a different question pays.
 
 The effect in a usual sequence of work:
 

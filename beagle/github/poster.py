@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import textwrap
 
 import json
 
@@ -23,6 +24,9 @@ log = logging.getLogger("beagle.github.poster")
 
 HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 COMMENT_TITLE = re.compile(r"\*\*P\d — (.+?)\*\*")
+
+# a fenced block does not wrap, so wrap it here
+WRAP_WIDTH = 88
 
 
 class ReviewPoster:
@@ -313,14 +317,15 @@ def location(finding: Finding) -> str:
 
 
 def folded(finding: Finding) -> list[str]:
-    """The finding as plain text a coding agent can act on, folded away by default."""
-    where = ", ".join(item.label() for item in finding.locations)
-    brief = [
-        "Fix this in the repository. Change nothing else.",
-        "",
-        f"{where} [{finding.severity.value} {finding.category}] {finding.title}",
-        " ".join(finding.body.split()),
-    ]
+    """The finding as plain text a coding agent can act on, folded away by default.
+
+    Wrapped, because the block has no soft wrapping of its own and a person
+    should be able to read it without dragging a scrollbar sideways.
+    """
+    brief = ["Fix this in the repository. Change nothing else.", ""]
+    brief += [item.label() for item in finding.locations]
+    brief.append(f"[{finding.severity.value} {finding.category}] {finding.title}")
+    brief += textwrap.wrap(" ".join(finding.body.split()), width=WRAP_WIDTH)
     if finding.suggested_patch:
         # verbatim: an added space would break the indentation of what it replaces
         brief.append("suggested replacement:")

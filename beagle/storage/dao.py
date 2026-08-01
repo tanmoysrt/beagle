@@ -240,13 +240,20 @@ class CallLog:
             ),
         )
 
-    def find(self, request_hash: str, prompt_set_version: str | None) -> dict[str, Any] | None:
-        """The answer to an identical question, if one was asked and answered before."""
+    def find(
+        self, request_hash: str, prompt_set_version: str | None, review_id: str | None = None
+    ) -> dict[str, Any] | None:
+        """The answer to an identical question asked in this same review.
+
+        Scoped to the review because two pull requests that happen to carry the
+        same diff are still two pull requests, and the second one deserves to be
+        read rather than handed the first one's answer.
+        """
         row = self.llm_log.one(
             "select response_json from llm_calls where request_hash = ?"
-            " and prompt_set_version is ? and ok = 1 and response_json is not null"
-            " order by id desc limit 1",
-            (request_hash, prompt_set_version),
+            " and prompt_set_version is ? and review_id is ? and ok = 1"
+            " and response_json is not null order by id desc limit 1",
+            (request_hash, prompt_set_version, review_id),
         )
         return json.loads(row[0]) if row else None
 

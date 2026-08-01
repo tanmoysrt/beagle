@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import uuid
 from pathlib import Path
 
 from ..config import ConfigProvider, load_config
@@ -61,7 +60,9 @@ def doctor(args) -> int:
 def review(args) -> int:
     with open_service(args) as service:
         request = ReviewRequest(
-            review_id=f"cli-{uuid.uuid4().hex[:8]}",
+            # Stable across runs of the same comparison, so an edit-and-review
+            # loop reuses the answers for the parts that did not change.
+            review_id=f"cli-{args.base or 'base'}..{args.ref or 'work'}",
             base=args.base,
             head=args.ref,
             diff=read_diff(args.diff),

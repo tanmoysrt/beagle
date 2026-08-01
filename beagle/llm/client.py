@@ -13,11 +13,9 @@ from ..constants import PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
 from ..errors import BudgetExceeded, ProviderError
 from ..storage.dao import CallLog
 
-# Rough per-million-token rates, used only for budget accounting and the cost
-# line in a review. Operators on a gateway can be billed differently.
-# in, out, and the share of the input rate that a cached read costs. The first
-# key that appears in the model name wins, so put the specific names first.
-# Rough rates for budget accounting only; a gateway may bill differently.
+# In, out, and the share of the input rate a cached read costs. The first key
+# that appears in the model name wins, so specific names come first. Rough
+# rates for budget accounting only; a gateway may bill differently.
 PRICES = {
     "deepseek-v4-flash-0731": (0.14, 0.28, 0.02),
     "deepseek-v4-flash": (0.14, 0.28, 0.20),
@@ -164,7 +162,7 @@ class LLMClient:
     ) -> Reply:
         started = time.monotonic()
         if reuse:
-            stored = self.stored_reply(request)
+            stored = self.stored_reply(request, review_id)
             if stored is not None:
                 return stored
         try:
@@ -188,15 +186,15 @@ class LLMClient:
         self.log(request, message, started, prompt_name, review_id, unit)
         return reply
 
-    def stored_reply(self, request: dict[str, Any]) -> Reply | None:
-        """The same question asked before deserves the same answer, at no cost.
+    def stored_reply(self, request: dict[str, Any], review_id: str | None) -> Reply | None:
+        """The same question asked before in this review deserves the same answer.
 
         Every input the model saw is inside the hash, so a new model, an edited
         prompt or a changed rule all miss and go to the service.
         """
         if self.call_log is None:
             return None
-        data = self.call_log.find(request_hash(request), PROMPT_SET_VERSION)
+        data = self.call_log.find(request_hash(request), PROMPT_SET_VERSION, review_id)
         if data is None:
             return None
         payload, text = {}, ""
