@@ -45,7 +45,7 @@ Beagle can read a public repository without a key. For a private repository, use
 
 The service must accept the Anthropic message format at `/v1/messages`. It must also accept tool use.
 
-Any gateway that gives this format works, so you can use an open model. This pair costs much less through OpenRouter, and it finds fewer problems:
+Any gateway that gives this format works, so you can use an open model. This pair costs much less through OpenRouter:
 
 ```toml
 [llm]
@@ -56,7 +56,9 @@ reasoning = "z-ai/glm-5.2"
 general = "deepseek/deepseek-v4-flash-0731"
 ```
 
-`moonshotai/kimi-k2.7-code` is an alternative for `reasoning` at almost the same price. Refer to [reviews.md](reviews.md) for the measurement.
+With a low-cost reasoning model, also set `deep_paths = ["*"]`. Then every unit gets the reasoning model and `general` does only the plan, the merge, and the summary. On 16 pull requests this found almost twice as many of the known defects. It costs 1.7 times more, which is still 13 times less than the Anthropic pair. Keep the default `[]` when the reasoning model is expensive.
+
+Use `moonshotai/kimi-k2.6` if you prefer Moonshot. Do not use `moonshotai/kimi-k2.7-code`: it cannot turn reasoning off, so it uses the whole token budget on thought and returns no findings.
 
 ## embeddings
 
@@ -83,7 +85,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | `categories` | bug, security, performance, correctness, style, test_gap | The categories that the model can use |
 | `max_cost_usd` | `2.50` | Beagle stops the review at this cost |
 | `token_budget` | `60000` | Beagle stops the review at this number of tokens |
-| `deep_paths` | `[]` | Patterns of paths that always use the strong model |
+| `deep_paths` | `[]` | Patterns of paths that always use the reasoning model. Use `["*"]` for every file. |
 
 Beagle limits P3 findings to 3, P4 findings to 2, and P5 findings to 1 in one review. A `test_gap` finding never goes above P4, so a missing test is a nit and cannot stop a merge. These limits are in the code. You cannot change them with the configuration.
 
