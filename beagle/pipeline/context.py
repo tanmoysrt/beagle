@@ -9,8 +9,8 @@ from .models import ReviewUnit
 from .xref import CrossReferences, render as render_xrefs
 
 CHARS_PER_TOKEN = 4
-RAG_RESULTS = 4
-MAX_NEIGHBOURS = 12
+RAG_RESULTS = 10
+MAX_NEIGHBOURS = 24
 BODY_LIMIT_CHARS = 1800
 
 

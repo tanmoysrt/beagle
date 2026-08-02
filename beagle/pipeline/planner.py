@@ -27,7 +27,7 @@ class Planner:
             plan_values(MAX_UNITS, OUTPUT_INSTRUCTIONS["plan"])
         )
         reply = self.client.structured(
-            tier="general",
+            tier="reasoning",
             system=[{"type": "text", "text": system}],
             user=describe(diffs),
             schema=PLAN_UNITS_SCHEMA,

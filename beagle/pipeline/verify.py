@@ -38,8 +38,9 @@ log = logging.getLogger("beagle.pipeline.verify")
 class Verifier:
     """Re-checks the findings that would cost the most trust if wrong.
 
-    Every security finding is verified regardless of confidence, along with
-    any P0 or P1 the reviewer was not sure about.
+    Every security finding is checked whatever its confidence, along with any
+    P0 or P1 the reviewer was unsure of. Overruling a finding is judgment, so
+    the reasoning model does it. The small model never deletes one.
     """
 
     def __init__(self, client: LLMClient, prompts: PromptSet):
@@ -52,12 +53,6 @@ class Verifier:
         if finding.is_security:
             return True
         return finding.severity.at_least(Severity.P1) and finding.confidence < SHAKY_CONFIDENCE
-
-    def tier_for(self, finding: Finding) -> str:
-        """The reasoning model only where being wrong is expensive."""
-        if finding.is_security or finding.severity is Severity.P0:
-            return "reasoning"
-        return "general"
 
     def verify_all(
         self,
@@ -73,7 +68,7 @@ class Verifier:
                 kept.append(finding)
                 continue
             system = self.system_for(prompt, contexts.get(finding.unit, ""))
-            verdict = self.check(finding, system, review_id, budget, self.tier_for(finding))
+            verdict = self.check(finding, system, review_id, budget)
             if not isinstance(verdict, dict):
                 kept.append(finding)
             elif verdict.get("verdict") == "reject" and self.reasoned(verdict, finding):
@@ -114,11 +109,10 @@ class Verifier:
         system: list[dict],
         review_id: str,
         budget: Budget | None,
-        tier: str = "reasoning",
     ) -> dict | None:
         try:
             reply = self.client.structured(
-                tier=tier,
+                tier="reasoning",
                 system=system,
                 user=self.question(finding),
                 schema=VERIFY_SCHEMA,

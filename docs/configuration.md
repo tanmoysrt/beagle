@@ -40,8 +40,8 @@ Beagle can read a public repository without a key. For a private repository, use
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
-| `reasoning.model` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
-| `general.model` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
+| `reasoning.model` | `"claude-sonnet-5"` | Every judgment about the code: the units, the review, the merge and the second check |
+| `general.model` | `"claude-haiku-4-5"` | The summary, and reading a comment from a person. The answer there is words, not a decision. |
 | `reasoning.extra_body` | `{}` | More fields for the request body of that model. Beagle sends them and does not read them. |
 | `general.extra_body` | `{}` | The same, for the other model |
 
@@ -119,7 +119,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | --- | --- | --- |
 | `min_severity` | `"P5"` | Beagle does not report a finding below this level. Security findings are an exception. |
 | `fail_on` | `"P1"` | If a finding has this level or a worse level, the verdict is `request_changes`. |
-| `max_findings` | `8` | The largest number of findings in one review |
+| `max_findings` | `12` | The largest number of findings in one review |
 | `categories` | bug, security, performance, correctness, style, test_gap | The categories that the model can use |
 | `max_cost_usd` | `2.50` | Beagle stops the review at this cost |
 | `token_budget` | `250000` | Beagle stops the review at this number of tokens. It guards against a runaway; `max_cost_usd` is the real limit. |

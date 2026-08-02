@@ -64,8 +64,9 @@ class TierCfg(Section):
 
 
 class LLMCfg(Section):
-    """Two models. `reasoning` reviews what is risky and settles what is disputed;
-    `general` does every other call, and still has to reason."""
+    """Two models. `reasoning` makes every judgment about the code: the units,
+    the review, the merge and the second check. `general` writes the summary
+    and reads what a person typed, where the answer is words, not a decision."""
 
     base_url: str = "https://api.anthropic.com"
     api_key: str
@@ -117,7 +118,7 @@ class GithubCfg(Section):
 class ReviewCfg(Section):
     min_severity: Severity = Severity.P5
     fail_on: Severity = Severity.P1
-    max_findings: int = Field(default=8, ge=1)
+    max_findings: int = Field(default=12, ge=1)
     categories: list[str] = Field(
         default_factory=lambda: [
             "bug",

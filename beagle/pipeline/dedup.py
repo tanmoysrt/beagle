@@ -12,8 +12,10 @@ from .schemas import OUTPUT_INSTRUCTIONS, read_entries, report_findings_schema
 class Merger:
     """Collapses repeats and enforces the caps that keep reviews short.
 
-    Security findings pass through untouched: they are never merged away,
-    never capped, and never dropped by the severity floor.
+    A serious finding never reaches the small model. Security, P0 and P1 are
+    the reviewer's gravest calls, and the model that sorts files is not the one
+    to overrule them. They are still collapsed when they repeat, and they skip
+    the caps and the severity floor.
     """
 
     def __init__(self, client: LLMClient, prompts: PromptSet, cfg: ReviewCfg):
@@ -24,17 +26,16 @@ class Merger:
     def merge(
         self, findings: list[Finding], review_id: str, budget: Budget | None = None
     ) -> tuple[list[Finding], int]:
-        security = [item for item in findings if item.is_security]
-        ordinary = [item for item in findings if not item.is_security]
+        serious = collapse_identical([item for item in findings if grave(item)])
+        ordinary = collapse_identical([item for item in findings if not grave(item)])
 
-        ordinary = collapse_identical(ordinary)
         if len(ordinary) > 1:
             ordinary = self.model_merge(ordinary, review_id, budget) or ordinary
 
         ordinary = [item for item in ordinary if item.severity.at_least(self.cfg.min_severity)]
         ordinary = apply_level_caps(ordinary)
         kept, overflow = apply_total_cap(ordinary, self.cfg.max_findings)
-        return security + kept, overflow
+        return serious + kept, overflow
 
     def model_merge(
         self, findings: list[Finding], review_id: str, budget: Budget | None
@@ -42,7 +43,7 @@ class Merger:
         system = self.prompts.get("dedup").render(dedup_values(OUTPUT_INSTRUCTIONS["dedup"]))
         try:
             reply = self.client.structured(
-                tier="general",
+                tier="reasoning",
                 system=[{"type": "text", "text": system}],
                 user=render_findings(findings),
                 schema=report_findings_schema(self.cfg.categories),
@@ -83,6 +84,11 @@ class Merger:
             context_used=original.context_used if original else "",
             metadata=dict(original.metadata) if original else {},
         )
+
+
+def grave(finding: Finding) -> bool:
+    """What the small model may not touch."""
+    return finding.is_security or finding.severity.at_least(Severity.P1)
 
 
 def collapse_identical(findings: list[Finding]) -> list[Finding]:
