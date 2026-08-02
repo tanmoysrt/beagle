@@ -60,6 +60,11 @@ def print_eval(summary: dict) -> None:
           f"{summary['false_positives']} false positives  ·  "
           f"{summary['extra_findings_per_case']} extra findings per case  ·  "
           f"${summary['cost_usd']}\n")
+    if summary.get("degraded_cases"):
+        print(f"!! {summary['degraded_cases']} case(s) did not finish, so the score is not one:")
+        for note in summary.get("degraded", []):
+            print(f"     {note}")
+        print()
     for case in summary["detail"]:
         print(f"  {'pass' if case['passed'] else 'FAIL'}  {case['id']}")
         for line in case["missed"]:

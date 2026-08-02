@@ -15,9 +15,10 @@ log = logging.getLogger("beagle.pipeline.agent")
 REPORT_TOOL = "report_findings"
 # Beyond the step budget: the report itself, and one nudge.
 SPARE_TURNS = 3
-# Output only. A cut off turn carries no tool call, so the room is never worth
-# saving.
-MAX_TOKENS = 250000
+# Output only, and a ceiling rather than a spend. A cut off turn carries no
+# tool call, so room is worth having; a gateway routes on this number, so a
+# provider that cannot serve it disappears.
+MAX_TOKENS = 64000
 TRANSCRIPT_RESULT_CHARS = 2000
 VERDICT = (
     "That is everything you read. Report every defect the change introduces, worst "

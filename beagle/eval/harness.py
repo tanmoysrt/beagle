@@ -45,6 +45,7 @@ class CaseResult:
     severity_errors: list[str] = field(default_factory=list)
     extra: int = 0
     cost_usd: float = 0.0
+    degraded: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -70,6 +71,15 @@ class EvalReport:
     def cost_usd(self) -> float:
         return round(sum(case.cost_usd for case in self.cases), 4)
 
+    @property
+    def degraded(self) -> list[str]:
+        """A case the reviewer could not finish scores nothing and means nothing.
+
+        Without this a broken key or a provider outage reads as a model that
+        found no defects.
+        """
+        return sorted({note for case in self.cases for note in case.degraded})
+
     def to_dict(self) -> dict:
         return {
             "cases": len(self.cases),
@@ -79,6 +89,8 @@ class EvalReport:
             "severity_errors": sum(len(case.severity_errors) for case in self.cases),
             "extra_findings_per_case": round(self.noise, 2),
             "cost_usd": self.cost_usd,
+            "degraded_cases": sum(1 for case in self.cases if case.degraded),
+            "degraded": self.degraded[:10],
             "detail": [
                 {
                     "id": case.id,
@@ -111,7 +123,11 @@ class EvalHarness:
         # repeats on every run, so reuse would score the first run twice.
         request = ReviewRequest(review_id=f"eval-{case.id}", diff=case.diff, fresh=True)
         result = self.service.runner().run(request, EventStream())
-        outcome = CaseResult(id=case.id, cost_usd=result.summary.cost_usd)
+        outcome = CaseResult(
+            id=case.id,
+            cost_usd=result.summary.cost_usd,
+            degraded=list(result.summary.degraded),
+        )
         matched: set[int] = set()
 
         for expectation in case.expect:
