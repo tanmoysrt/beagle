@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from ..index.embedder import ChunkEmbedder
 from ..repo.diff import FileDiff
+from ..repo.mirror import Mirror
 from ..storage.dao import IndexStore
 from .models import ReviewUnit
 from .xref import CrossReferences, render as render_xrefs
@@ -65,10 +66,12 @@ class ContextBuilder:
         store: IndexStore,
         embedder: ChunkEmbedder | None = None,
         xrefs: CrossReferences | None = None,
+        mirror: Mirror | None = None,
     ):
         self.store = store
         self.embedder = embedder
         self.xrefs = xrefs
+        self.mirror = mirror
 
     def build(
         self,
@@ -91,7 +94,7 @@ class ContextBuilder:
 
         remaining = budget_tokens - used
         neighbours, neighbour_tokens, skipped = self.call_graph_context(
-            unit_diffs, diffs, remaining
+            unit_diffs, diffs, remaining, head_sha
         )
         context.neighbours = neighbours
         context.truncated.extend(skipped)
@@ -148,14 +151,20 @@ class ContextBuilder:
         return render_xrefs(self.xrefs.find(diffs, head_sha))
 
     def call_graph_context(
-        self, unit_diffs: list[FileDiff], diffs: list[FileDiff], budget_tokens: int
+        self,
+        unit_diffs: list[FileDiff],
+        diffs: list[FileDiff],
+        budget_tokens: int,
+        head_sha: str | None = None,
     ) -> tuple[str, int, list[str]]:
         if budget_tokens <= 0:
             return "", 0, ["call-graph neighbours"]
 
         # what the new code calls comes first: the slice below is what fits, and a
         # name this change actually calls beats an arbitrary neighbour
-        related = self.called_by_new_code(unit_diffs, diffs) + self.collect_related(unit_diffs)
+        related = self.called_by_new_code(unit_diffs, diffs, head_sha) + self.collect_related(
+            unit_diffs, head_sha
+        )
         signatures, bodies, skipped = [], [], []
         used = 0
 
@@ -184,7 +193,7 @@ class ContextBuilder:
         return text, used, skipped
 
     def called_by_new_code(
-        self, unit_diffs: list[FileDiff], diffs: list[FileDiff]
+        self, unit_diffs: list[FileDiff], diffs: list[FileDiff], head_sha: str | None = None
     ) -> list[dict]:
         """What the added lines call, looked up by name.
 
@@ -200,7 +209,9 @@ class ContextBuilder:
         entries = []
         for name in self.ranked_calls(unit_diffs, diffs, own):
             for symbol in self.store.symbols_named(name, limit=1):
-                entries.append(self.entry(symbol, f"called by the new code ({name})"))
+                entries.append(
+                    self.entry(symbol, f"called by the new code ({name})", head_sha)
+                )
             if len(entries) >= MAX_CALLED:
                 break
         return entries
@@ -247,12 +258,12 @@ class ContextBuilder:
             if (found := DEFINED.match(text))
         }
 
-    def collect_related(self, diffs: list[FileDiff]) -> list[dict]:
+    def collect_related(self, diffs: list[FileDiff], head_sha: str | None = None) -> list[dict]:
         seen, related = set(), []
         for file_diff in diffs:
             for start, end in file_diff.changed_line_ranges:
                 for symbol in self.store.symbols_overlapping(file_diff.path, start, end):
-                    for entry in self.neighbours_of(symbol, file_diff.path):
+                    for entry in self.neighbours_of(symbol, file_diff.path, head_sha):
                         key = (entry["path"], entry["qualified_name"])
                         if key in seen:
                             continue
@@ -260,29 +271,51 @@ class ContextBuilder:
                         related.append(entry)
         return related
 
-    def neighbours_of(self, symbol: dict, own_path: str) -> list[dict]:
+    def neighbours_of(
+        self, symbol: dict, own_path: str, head_sha: str | None = None
+    ) -> list[dict]:
         entries = []
         for caller in self.store.callers_of(symbol["id"]):
             if caller["path"] != own_path:
-                entries.append(self.entry(caller, f"calls {symbol['name']}"))
+                entries.append(self.entry(caller, f"calls {symbol['name']}", head_sha))
         for callee in self.store.callees_of(symbol["id"]):
             if callee.get("id") and callee.get("path") != own_path:
-                entries.append(self.entry(callee, f"called by {symbol['name']}"))
+                entries.append(self.entry(callee, f"called by {symbol['name']}", head_sha))
         return entries
 
-    def entry(self, symbol: dict, relation: str) -> dict:
+    def entry(self, symbol: dict, relation: str, head_sha: str | None = None) -> dict:
         return {
             "path": symbol["path"],
             "qualified_name": symbol.get("qualified_name") or symbol.get("name"),
             "signature": symbol.get("signature") or symbol.get("name"),
             "start_line": symbol.get("start_line"),
             "relation": relation,
-            "body": self.body_of(symbol),
+            "body": self.body_of(symbol, head_sha),
         }
 
-    def body_of(self, symbol: dict) -> str | None:
+    def body_of(self, symbol: dict, head_sha: str | None = None) -> str | None:
+        """The chunk if there is one, and the lines if there is not.
+
+        Chunks cover top-level symbols, so a method inside a class has none.
+        Much of the call graph is methods, and a signature with no body says
+        only that the name exists.
+        """
         body = self.store.symbol_body(symbol["id"])
+        if not body:
+            body = self.lines_of(symbol, head_sha)
         return body[:BODY_LIMIT_CHARS] if body else None
+
+    def lines_of(self, symbol: dict, head_sha: str | None) -> str | None:
+        if self.mirror is None or not head_sha or not symbol.get("start_line"):
+            return None
+        try:
+            source = self.mirror.read_file(head_sha, symbol["path"]).decode("utf-8", "replace")
+        except Exception:
+            return None
+        lines = source.splitlines()
+        start = symbol["start_line"]
+        end = symbol.get("end_line") or start
+        return "\n".join(lines[start - 1 : end]) or None
 
     def similar_context(
         self, diff_text: str, unit: ReviewUnit, budget_tokens: int

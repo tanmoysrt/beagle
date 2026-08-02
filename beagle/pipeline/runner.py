@@ -69,7 +69,9 @@ class ReviewRunner:
 
         self.selector = FileSelector(mirror, config.repo.ignore)
         self.instructions = InstructionFinder(mirror, config.context.instruction_files_extra)
-        self.context_builder = ContextBuilder(store, embedder, CrossReferences(mirror))
+        self.context_builder = ContextBuilder(
+            store, embedder, CrossReferences(mirror), mirror
+        )
         self.planner = Planner(client, prompts)
         self.risk = RiskTagger(store)
         self.reviewer = UnitReviewer(client, prompts, config.review)
