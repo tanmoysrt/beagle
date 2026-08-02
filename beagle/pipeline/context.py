@@ -20,12 +20,15 @@ class UnitContext:
     neighbours: str = ""
     cross_language: str = ""
     similar: str = ""
+    siblings: str = ""
     truncated: list[str] = field(default_factory=list)
     rag_available: bool = True
     tokens: int = 0
 
     def render(self) -> str:
         parts = [f"CHANGED CODE UNDER REVIEW\n\n{self.diff_text}"]
+        if self.siblings:
+            parts.append(f"THE REST OF THIS PULL REQUEST\n\n{self.siblings}")
         if self.neighbours:
             parts.append(f"RELATED SYMBOLS FROM THE CALL GRAPH\n\n{self.neighbours}")
         if self.cross_language:
@@ -67,6 +70,9 @@ class ContextBuilder:
         context.diff_text = "\n\n".join(item.render() for item in unit_diffs)
         used = estimate(context.diff_text)
 
+        context.siblings, sibling_tokens = self.siblings(unit_diffs, diffs, budget_tokens - used)
+        used += sibling_tokens
+
         context.cross_language = self.cross_language(unit_diffs, head_sha)
         used += estimate(context.cross_language)
 
@@ -87,6 +93,39 @@ class ContextBuilder:
 
         context.tokens = used
         return context
+
+    def siblings(
+        self, unit_diffs: list[FileDiff], diffs: list[FileDiff], budget_tokens: int
+    ) -> tuple[str, int]:
+        """The rest of the change: every other file by name, and in full when
+        this unit names it.
+
+        A unit that inherits from a class another unit adds must not guess at
+        it. The planner splits the files; the pull request is still one change.
+        """
+        own = {item.path for item in unit_diffs}
+        others = [item for item in diffs if item.path not in own]
+        if not others:
+            return "", 0
+
+        lines = [
+            f"- {item.path} ({item.status}, +{item.added_count}/-{item.removed_count})"
+            for item in others
+        ]
+        text = "\n".join(lines)
+        used = estimate(text)
+
+        mine = "\n".join(item.render() for item in unit_diffs)
+        for other in others:
+            if not names(mine, other.path):
+                continue
+            rendered = other.render()
+            cost = estimate(rendered)
+            if used + cost > budget_tokens:
+                break
+            text += f"\n\n{rendered}"
+            used += cost
+        return text, used
 
     def cross_language(self, diffs: list[FileDiff], head_sha: str | None) -> str:
         if self.xrefs is None:
@@ -187,6 +226,13 @@ class ContextBuilder:
             if len(blocks) >= RAG_RESULTS:
                 break
         return "\n\n".join(blocks), used, True
+
+
+def names(text: str, path: str) -> bool:
+    """Does this diff mention that file, as an import or by its name?"""
+    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    module = path.rsplit(".", 1)[0].replace("/", ".")
+    return stem in text or module in text
 
 
 def estimate(text: str) -> int:
