@@ -41,7 +41,7 @@ Beagle gives one level to each finding.
 | P4 | A small improvement. |
 | P5 | A very small improvement. Beagle reports these rarely. |
 
-A security finding in application code is always P0. The pipeline sets this level. The model cannot make the level lower. Refer to [reviews.md](reviews.md) for the rules.
+The model gives a security finding its level, like any other finding. Beagle marks whether the path is application code, and it never drops a security finding. Refer to [reviews.md](reviews.md) for the rules.
 
 ## Design limits
 

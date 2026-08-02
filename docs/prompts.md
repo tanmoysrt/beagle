@@ -60,7 +60,7 @@ These are the parts of each prompt:
 
 Some rules are in the code. A prompt cannot make them different:
 
-- A security finding in application code is P0.
+- A security finding is never dropped by the severity floor or the caps.
 - One review has 12 findings at the most.
 - One review has 2 P5 findings and 3 P4 findings at the most.
 - The `min_severity` limit.

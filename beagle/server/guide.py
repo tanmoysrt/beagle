@@ -25,7 +25,7 @@ def header() -> str:
         f"# Beagle guide (schema version {SCHEMA_VERSION})\n\n"
         "Beagle reviews a diff and returns findings graded P0 (must not merge) to P5 (nit).\n"
         f"Severity levels: {', '.join(SEVERITIES)}. Security findings in application code are "
-        "always P0 and are exempt from the finding caps.\n"
+        "exempt from the finding caps and the severity floor.\n"
         f"At most {P3_CAP} P3, {P4_CAP} P4 and {P5_CAP} P5 findings survive the merge pass."
     )
 

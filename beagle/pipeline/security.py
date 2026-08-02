@@ -3,16 +3,19 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
-from ..config import Severity
 from ..constants import NON_APP_PATTERNS
 from .models import Finding
 
 
 class SecurityClassifier:
-    """Decides application code by path, then forces those findings to P0.
+    """Marks a security finding as application code or not, and nothing more.
 
-    The model's own severity is kept for calibration, and the classification
-    is attached to the finding so the rule can be audited.
+    Forcing every one of them to P0 put 45 percent of reviews at 1 out of 5,
+    which taught readers to ignore the number. The reviewer rates a security
+    fault on the same scale as any other, and the level it gives is the level
+    that stands. What the classification still buys: a security finding is
+    never dropped by the severity floor, never capped, and always checked
+    a second time.
     """
 
     def __init__(self, extra_non_app: list[str] | None = None):
@@ -24,9 +27,6 @@ class SecurityClassifier:
                 continue
             finding.app_code = self.is_application_code(finding.file)
             finding.metadata["path_class"] = "application" if finding.app_code else "non-application"
-            if finding.app_code and finding.severity is not Severity.P0:
-                finding.metadata["severity_forced"] = finding.severity.value
-                finding.severity = Severity.P0
         return findings
 
     def is_application_code(self, path: str) -> bool:

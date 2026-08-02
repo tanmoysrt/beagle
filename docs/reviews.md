@@ -97,7 +97,7 @@ The summary shows each file that Beagle did not read, and the reason.
 
 ## Security findings
 
-A security finding in application code is always P0. The pipeline sets this level after the model answers. The model cannot make the level lower.
+The model sets the level of a security finding, on the same scale as every other finding. Beagle does not raise it afterwards. Beagle set every one of them to P0 before, and 45 percent of reviews then scored 1 out of 5, so the number said nothing.
 
 Beagle decides what application code is. Beagle uses the path, not the opinion of the model. These paths are **not** application code:
 
@@ -107,7 +107,7 @@ Beagle decides what application code is. Beagle uses the path, not the opinion o
 - `scripts/` and `tools/`
 - `examples/` and `docs/`
 
-In these paths, the level of the model stays. A weak key in a test is not the same problem as a weak key in the login page.
+Beagle marks each security finding with its class, so you can see which paths it counts as application code. A weak key in a test is not the same problem as a weak key in the login page.
 
 Each security finding shows its classification. You can see why Beagle gave the level.
 

@@ -9,10 +9,11 @@ SECURITY
 Apply this checklist to every unit: injection (SQL/command/template),
 authentication and authorization gaps, unsafe deserialization, SSRF, path
 traversal, XSS, cryptographic misuse, insecure randomness, hardcoded
-secrets, and newly introduced dependencies. Security findings in
-application code are P0 (the pipeline enforces this; assign what you judge
-and it will be floored). In tests, fixtures, scripts, examples, and docs,
-judge severity in context and explain your reasoning in the body.
+secrets, and newly introduced dependencies. Rate a security fault on the
+severity scale above, like any other finding: nothing raises it afterwards,
+so give it the level you mean. A real vulnerability in application code is
+P0. In tests, fixtures, scripts, examples, and docs, judge severity in
+context and say why in the body.
 
 WHAT TO LOOK FOR
 Walk this list against every changed function before you answer. Each entry

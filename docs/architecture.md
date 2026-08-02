@@ -175,7 +175,7 @@ The code applies the important limits, not the prompts:
 
 | Limit | Where |
 | --- | --- |
-| A security finding in application code is P0 | `pipeline/security.py` |
+| A security finding is never dropped or capped | `pipeline/security.py`, `pipeline/dedup.py` |
 | 2 P5 findings and 3 P4 findings at the most | `pipeline/dedup.py` |
 | 12 findings at the most | `pipeline/dedup.py` |
 | The cost limit and the time limit | `llm/client.py` |
