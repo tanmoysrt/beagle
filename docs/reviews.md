@@ -42,13 +42,14 @@ Beagle also starts this review by itself. Refer to [github.md](github.md).
 3. **Plan.** The small model puts the files into units. One unit is one logical change.
 4. **Find the risk.** Beagle reads the call graph. Beagle gives a risk tag to a unit that is near one of these subjects: authentication, sessions, cryptography, payments, deletion of data, or concurrency. A unit with a risk tag uses the strong model.
 5. **Scan for secrets.** A local scan reads the new lines. This scan uses patterns and entropy. It does not use a model and it does not cost money.
-6. **Collect the context.** Beagle collects four items for each unit. First the diff. Then the related symbols from the call graph. Then the other files that still name what the diff removes. Then similar code from the index. The third item is a text search of the whole tree, so it finds a caller in a different language. A Vue component can call a Python route by its address. Such a call has no entry in the call graph, but the search finds it. Beagle stops when the token budget is full. The summary shows the parts that did not fit.
-7. **Review.** The model reads each unit and returns findings.
-8. **Merge.** The small model puts the same finding from different units together. Beagle then applies the limits.
-9. **Classify the security findings.** Refer to "Security findings" below.
-10. **Apply the memory.** Beagle hides the findings that the team dismissed before. Refer to [memory.md](memory.md).
-11. **Check again.** A second model examines each security finding, and each P0 or P1 finding with a low confidence. The strong model checks a security or P0 finding; the usual model checks the others. The model can agree, correct, or refuse the finding.
-12. **Write the summary.** Beagle keeps the result and closes the event stream.
+6. **Collect the context.** Beagle collects five items for each unit. First the diff. Then the related symbols from the call graph. Then the other files that still name what the diff removes. Then similar code from the index. The third item is a text search of the whole tree, so it finds a caller in a different language. A Vue component can call a Python route by its address. Such a call has no entry in the call graph, but the search finds it. Last, the small model reads the repository with tools and hands back the line ranges that the first four missed. Beagle stops when the token budget is full. The summary shows the parts that did not fit.
+7. **Investigate.** The small model gets the diff and the context above. It has seven read-only tools: `read_file`, `read_symbol`, `find_callers`, `find_callees`, `search_code`, `grep` and `git_history`. It answers with line ranges and short notes, never with code, and Beagle reads each range from the repository. The reviewer sees the result and never sees the search.
+8. **Review.** The strong model reads each unit and returns findings. It has no tools: it judges what it is given.
+9. **Merge.** The small model puts the same finding from different units together. Beagle then applies the limits.
+10. **Classify the security findings.** Refer to "Security findings" below.
+11. **Apply the memory.** Beagle hides the findings that the team dismissed before. Refer to [memory.md](memory.md).
+12. **Check again.** A second model examines each security finding, and each P0 or P1 finding with a low confidence. The strong model checks a security or P0 finding; the usual model checks the others. The model can agree, correct, or refuse the finding.
+13. **Write the summary.** Beagle keeps the result and closes the event stream.
 
 ## Reviews of almost the same change
 
@@ -147,7 +148,7 @@ Each line is one JSON object. Each line has an `event` field, a `seq` field, and
 | --- | --- |
 | `review_started` | The review started |
 | `unit_started` | A unit started |
-| `investigation_step` | The reviewer used a tool. The line gives the tool, the query and the first line of the result |
+| `investigation_step` | The investigator used a tool. The line gives the tool, the query and the first line of the result |
 | `unit_complete` | A unit is complete |
 | `finding` | A finding is in the result |
 | `finding_suppressed` | The memory hid a finding |

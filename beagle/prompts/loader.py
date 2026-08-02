@@ -14,6 +14,7 @@ SLOT = re.compile(r"\{\{(\w+)\}\}")
 
 PROMPT_NAMES = (
     "reviewer",
+    "investigator",
     "plan",
     "dedup",
     "verify",
@@ -25,7 +26,8 @@ PROMPT_NAMES = (
 
 # Slots an override must keep, or the pipeline loses its output contract.
 REQUIRED_SLOTS = {
-    "reviewer": {"output_instructions", "severity_scale", "investigation"},
+    "reviewer": {"output_instructions", "severity_scale"},
+    "investigator": {"output_instructions"},
     "plan": {"output_instructions"},
     "dedup": {"output_instructions"},
     "verify": {"output_instructions", "severity_scale"},
@@ -48,52 +50,6 @@ P4  Minor improvement.
     small refactor opportunity, non-critical edge-case hardening, any missing test
 P5  Nit or polish. Reported sparingly.
     minor style preference, tiny readability tweak"""
-
-INVESTIGATION = """INVESTIGATION
-You have tools that read this repository. Use them.
-
-`read_file`, `grep` and `git_history` read the tree with the change in it.
-`read_symbol`, `find_callers`, `find_callees` and `search_code` read an index
-that can be a little older than the change.
-
-Work in this order:
-1. Read the diff. Find what changed and what the change can break.
-2. Find the place before you read it. `grep` gives you the path, the line and
-   the lines around it. Then `read_file` on that range, not on the whole file.
-   A whole file costs many times more than the twenty lines you need.
-3. Investigate each concern. List the callers, search for the same pattern, or
-   read the history when the change reverses something that looks deliberate.
-4. Stop when you have the evidence to be sure, or the evidence to know that
-   you cannot be sure. Investigate for an answer, not for completeness.
-5. Report the findings.
-
-What to investigate, as examples and not as a list to complete:
-- A signature changed: who calls it, and do the callers send the new argument?
-- A check went away: what did it protect?
-- A new dependency: does the repository already use one that does this?
-- A pattern looks wrong: search for how the team writes it elsewhere.
-- The change touches authentication, payments or cryptography: read the module
-  around it, not only the diff.
-
-What not to do:
-- Do not read every file. You investigate a change; you do not audit a
-  repository.
-- Do not call a tool to confirm what the diff already shows.
-- Do not investigate a P5 observation. Report it from the diff, or drop it.
-- If a tool gives you nothing, go on. Do not ask the same question again in
-  other words.
-- Do not read a file you have already read.
-
-Each tool call costs time and money, and each one makes the next one cost more.
-A good review makes 3 to 10 of them. A review that makes none is correct when
-the diff explains itself. Report as soon as you can answer. A long
-investigation that reports nothing is the worst review you can write."""
-
-ASSEMBLED_CONTEXT = """CONTEXT
-You receive: the diff (primary subject), signatures and bodies of related
-symbols from the call graph, other files that still name what the diff removes
-or renames, and similar code retrieved from the index."""
-
 
 @dataclass(frozen=True)
 class Prompt:
@@ -160,14 +116,9 @@ class PromptSet:
 
 
 def reviewer_values(
-    repo_overview: str,
-    instruction_files: str,
-    conventions: str,
-    output_instructions: str,
-    agent_mode: bool = True,
+    repo_overview: str, instruction_files: str, conventions: str, output_instructions: str
 ) -> dict[str, str]:
     return {
-        "investigation": INVESTIGATION if agent_mode else ASSEMBLED_CONTEXT,
         "severity_scale": SEVERITY_SCALE,
         "repo_overview": repo_overview,
         "instruction_files": instruction_files,

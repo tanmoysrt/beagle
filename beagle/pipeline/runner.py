@@ -18,6 +18,7 @@ from .context import ContextBuilder
 from .dedup import Merger
 from .events import EventStream
 from .instructions import InstructionFinder
+from .investigate import Investigator
 from ..memory.filter import MemoryFilter
 from .models import (
     Finding,
@@ -35,7 +36,6 @@ from .review import UnitReviewer
 from .risk import RiskTagger
 from .security import SecurityClassifier
 from .summary import Summariser
-from .tools import Toolbox
 from .verify import Verifier
 from .xref import CrossReferences
 
@@ -70,7 +70,9 @@ class ReviewRunner:
 
         self.selector = FileSelector(mirror, config.repo.ignore)
         self.instructions = InstructionFinder(mirror, config.context.instruction_files_extra)
-        self.context_builder = ContextBuilder(store, embedder, CrossReferences(mirror))
+        self.context_builder = ContextBuilder(
+            store, embedder, CrossReferences(mirror), mirror, Investigator(client, prompts)
+        )
         self.planner = Planner(client, prompts)
         self.risk = RiskTagger(store)
         self.reviewer = UnitReviewer(client, prompts, config.review)
@@ -126,10 +128,7 @@ class ReviewRunner:
             state.events.emit("unit_started", unit=unit.key, title=unit.title, files=unit.paths)
             reused_before = state.budget.reused
             try:
-                if self.config.review.agent_mode:
-                    findings, anomalies = self.investigate(state, unit, prefix)
-                else:
-                    findings, anomalies = self.read_context(state, unit, prefix, per_unit)
+                findings, anomalies = self.review_one(state, unit, prefix, per_unit)
             except BudgetExceeded:
                 state.degraded.append(
                     f"stopped after {state.covered} of {len(state.units)} units (budget)"
@@ -143,12 +142,9 @@ class ReviewRunner:
                 reused=state.budget.reused > reused_before,
             )
 
-    def investigate(
-        self, state: ReviewState, unit: ReviewUnit, prefix: list[dict]
+    def review_one(
+        self, state: ReviewState, unit: ReviewUnit, prefix: list[dict], per_unit: int
     ) -> tuple[list[Finding], list[str]]:
-        """The reviewer reads the repository itself, and its trail is the context."""
-        toolbox = Toolbox(self.mirror, self.store, state.head_sha, self.embedder, unit.paths)
-
         def announce(step) -> None:
             state.events.emit(
                 "investigation_step",
@@ -158,27 +154,13 @@ class ReviewRunner:
                 result=step.brief(),
             )
 
-        findings, anomalies, trail = self.reviewer.investigate(
-            unit,
-            unit_diff_text(state.diffs, unit),
-            toolbox,
-            prefix,
-            state.review_id,
-            state.budget,
-            announce,
+        context = self.context_builder.build(
+            unit, state.diffs, per_unit, state.head_sha, state.review_id, state.budget, announce
         )
-        state.contexts[unit.key] = trail.transcript()
-        if trail.stopped:
-            state.degraded.append(f"{unit.key} stopped at {trail.stopped}")
-        return findings, anomalies
-
-    def read_context(
-        self, state: ReviewState, unit: ReviewUnit, prefix: list[dict], per_unit: int
-    ) -> tuple[list[Finding], list[str]]:
-        context = self.context_builder.build(unit, state.diffs, per_unit, state.head_sha)
         state.contexts[unit.key] = context.render()
         if self.embedder is not None and not context.rag_available:
             state.degraded.append("retrieval unavailable")
+        state.degraded.extend(context.degraded)
         return self.reviewer.review(unit, context, prefix, state.review_id, state.budget)
 
     def finalize(self, state: ReviewState) -> ReviewResult:

@@ -9,7 +9,7 @@ from typing import Any
 import anthropic
 
 from ..config import LLMCfg, ReviewCfg
-from ..constants import MAX_UNITS, PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
+from ..constants import PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
 from ..errors import BudgetExceeded, ProviderError
 from ..storage.dao import CallLog
 
@@ -358,12 +358,7 @@ def collapse(blocks: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
 
 
 def make_budget(review: ReviewCfg) -> Budget:
-    """An agent review is bounded per unit, so the review-wide cap has to leave
-    room for every unit to spend its own. Cost and the deadline still stop it."""
-    tokens = review.token_budget
-    if review.agent_mode:
-        tokens = max(tokens, review.max_input_tokens * MAX_UNITS)
-    return Budget(max_cost_usd=review.max_cost_usd, token_budget=tokens)
+    return Budget(max_cost_usd=review.max_cost_usd, token_budget=review.token_budget)
 
 
 def disable_thinking(request: dict) -> dict:

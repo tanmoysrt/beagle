@@ -129,9 +129,6 @@ class ReviewCfg(Section):
     )
     max_cost_usd: float = Field(default=2.50, gt=0)
     token_budget: int = Field(default=60000, gt=0)
-    agent_mode: bool = True
-    max_steps: int = Field(default=12, ge=0)
-    max_input_tokens: int = Field(default=80000, gt=0)
 
 
 class ContextCfg(Section):
