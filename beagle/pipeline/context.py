@@ -13,10 +13,13 @@ CHARS_PER_TOKEN = 4
 RAG_RESULTS = 10
 MAX_NEIGHBOURS = 24
 BODY_LIMIT_CHARS = 1800
-MAX_CALLED = 8
+MAX_CALLED = 16
 # A name the added lines call. New code is not in the index, so it has no edges
 # and the call graph cannot reach what it uses.
 CALL_SITE = re.compile(r"(?:self\.)?([A-Za-z_]\w{3,})\s*\(")
+# A name the change defines is already on the page. Looking it up in the index
+# returns the version from before the change, or nothing.
+DEFINED = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)")
 NOT_A_CALL = {"print", "super", "range", "len", "str", "int", "list", "dict", "set",
               "tuple", "bool", "float", "isinstance", "getattr", "setattr", "hasattr",
               "return", "assert", "raise", "yield", "await", "if", "for", "while",
@@ -206,7 +209,15 @@ class ContextBuilder:
         for file_diff in diffs:
             for _, text in file_diff.added_lines:
                 names.update(CALL_SITE.findall(text))
-        return names - NOT_A_CALL
+        return names - NOT_A_CALL - self.defined_names(diffs)
+
+    def defined_names(self, diffs: list[FileDiff]) -> set[str]:
+        return {
+            found.group(1)
+            for file_diff in diffs
+            for _, text in file_diff.added_lines
+            if (found := DEFINED.match(text))
+        }
 
     def collect_related(self, diffs: list[FileDiff]) -> list[dict]:
         seen, related = set(), []
