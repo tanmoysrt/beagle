@@ -20,6 +20,7 @@ CALL_SITE = re.compile(r"(?:self\.)?([A-Za-z_]\w{3,})\s*\(")
 # A name the change defines is already on the page. Looking it up in the index
 # returns the version from before the change, or nothing.
 DEFINED = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)")
+SELF_CALL = re.compile(r"self\.([A-Za-z_]\w{3,})\s*\(")
 NOT_A_CALL = {"print", "super", "range", "len", "str", "int", "list", "dict", "set",
               "tuple", "bool", "float", "isinstance", "getattr", "setattr", "hasattr",
               "return", "assert", "raise", "yield", "await", "if", "for", "while",
@@ -197,12 +198,39 @@ class ContextBuilder:
         """
         own = self.called_names(unit_diffs)
         entries = []
-        for name in sorted(own) + sorted(self.called_names(diffs) - own):
+        for name in self.ranked_calls(unit_diffs, diffs, own):
             for symbol in self.store.symbols_named(name, limit=1):
                 entries.append(self.entry(symbol, f"called by the new code ({name})"))
             if len(entries) >= MAX_CALLED:
                 break
         return entries
+
+    def ranked_calls(
+        self, unit_diffs: list[FileDiff], diffs: list[FileDiff], own: set[str]
+    ) -> list[str]:
+        """What is worth a slot, best first.
+
+        Alphabetical order spent every slot on `Bench` and `from_dict` and cut
+        off `_transition`, which was the one name that answered the question.
+        A private method reached through `self` is the behaviour of the change;
+        a bare constructor is a type the reviewer can already guess.
+        """
+        inner = {
+            found
+            for file_diff in diffs
+            for _, text in file_diff.added_lines
+            for found in SELF_CALL.findall(text)
+        }
+        names = self.called_names(diffs)
+        return sorted(
+            names,
+            key=lambda name: (
+                not name.startswith("_"),
+                name not in inner,
+                name not in own,
+                name,
+            ),
+        )
 
     def called_names(self, diffs: list[FileDiff]) -> set[str]:
         names: set[str] = set()
