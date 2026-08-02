@@ -5,7 +5,7 @@ import re
 
 from ..pipeline.schemas import COMMENT_SCHEMA, OUTPUT_INSTRUCTIONS
 from .client import GithubClient
-from .events import DEFAULT_MENTION, FINDING_MARKER, Comment, command_text
+from .events import DEFAULT_MENTION, FINDING_MARKER, MARKER, Comment, command_text
 
 log = logging.getLogger("beagle.github.comments")
 
@@ -44,22 +44,37 @@ class CommentRouter:
         self.poster = poster
 
     def handle(self, comment: Comment) -> None:
-        text = command_text(comment.body, self.mention)
+        fingerprint = self.thread_fingerprint(comment)
+        text = self.spoken_to(comment, fingerprint)
         if text is None:
             return
-        self.ack(comment)
-        fingerprint = self.thread_fingerprint(comment)
         action, argument = parse(text)
         if action is None:
             action, argument = self.classify(text, fingerprint)
         if action is None:
             log.info("ignoring comment %s on #%s", comment.id, comment.number)
-            self.done(comment.number)
             return
+        # The thumb comes after the reading, not before it. Two people talking
+        # under a finding should not collect a reaction on every message.
+        self.ack(comment)
         self.act(comment, fingerprint, action, argument)
         # a review runs as its own job and reports when it posts
         if action != "review":
             self.done(comment.number)
+
+    def spoken_to(self, comment: Comment, fingerprint: str | None) -> str | None:
+        """What the author asked of Beagle, or nothing when it was not asked.
+
+        Inside a thread Beagle opened, a reply is for Beagle whether or not it
+        carries the name. Nobody writes `@beagle` under a finding to say that
+        the finding is wrong.
+        """
+        text = command_text(comment.body, self.mention)
+        if text is not None:
+            return text
+        if fingerprint is None or MARKER in comment.body:
+            return None
+        return comment.body.strip() or None
 
     def ack(self, comment: Comment) -> None:
         """A thumb on the comment Beagle read, an eye on the pull request while it works."""
