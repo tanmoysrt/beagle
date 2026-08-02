@@ -52,7 +52,7 @@ The service must accept the Anthropic message format at `/v1/messages`, and it m
 
 Beagle read the same change two times, with `temperature = 0.0` and one pinned provider. The first read found 1 problem. The second found 7. No problem appeared in both.
 
-`temperature` does not repair this, and the measurement above is what says so. A mixture-of-experts model sends each token to a few of its experts, and the choice of expert moves with the other work in the same batch on the server. Two identical questions take two paths. Temperature acts after that point, so it cannot hold the path still.
+`temperature` does not repair this, and the measurement above is what says so. A mixture-of-experts model sends each token to a few of its experts. The choice of expert moves with the other work in the same batch on the server. Two identical questions take two paths. Temperature acts after that point, so it cannot hold the path still.
 
 Read a score from one review as one sample. To compare two prompts or two models, run each of them more than one time and compare the averages. One run against one run measures the noise.
 
