@@ -20,8 +20,8 @@ api_key = "PASTE-OPENROUTER-KEY"
 # Leave these sections out and Beagle uses claude-sonnet-5 and claude-haiku-4-5.
 [llm.reasoning]
 model = "z-ai/glm-5.2"
-# The reviewer sends its conversation again on each turn. One provider reads
-# it from the cache; a second provider reads it again at full price.
+# One provider reads the conversation from its cache; a second reads it again
+# at full price. Refer to docs/configuration.md.
 [llm.reasoning.extra_body.provider]
 order = ["z-ai"]
 allow_fallbacks = false

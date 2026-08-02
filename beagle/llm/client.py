@@ -12,7 +12,6 @@ from ..config import LLMCfg, ReviewCfg
 from ..constants import MAX_UNITS, PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
 from ..errors import BudgetExceeded, ProviderError
 from ..storage.dao import CallLog
-from .openai_api import OpenAIMessages
 
 # In, out, and the share of the input rate a cached read costs. The first key
 # that appears in the model name wins, so specific names come first. Rough
@@ -105,17 +104,10 @@ class LLMClient:
     def __init__(self, cfg: LLMCfg, call_log: CallLog | None = None, timeout: float = 300.0):
         self.cfg = cfg
         self.call_log = call_log
-        self.messages = self.transport(timeout)
-
-    def transport(self, timeout: float):
-        if self.cfg.api == "openai":
-            return OpenAIMessages(
-                self.cfg.base_url, self.cfg.api_key, dict(self.cfg.headers), timeout
-            )
-        return anthropic.Anthropic(
-            api_key=self.cfg.api_key,
-            base_url=self.cfg.base_url,
-            default_headers=dict(self.cfg.headers),
+        self.messages = anthropic.Anthropic(
+            api_key=cfg.api_key,
+            base_url=cfg.base_url,
+            default_headers=dict(cfg.headers),
             timeout=timeout,
             max_retries=3,
         ).messages
@@ -184,9 +176,9 @@ class LLMClient:
         }
         if force_tool:
             request["tool_choice"] = {"type": "tool", "name": force_tool}
-        extra = self.cfg.body_for(tier)
+        extra = self.cfg.tier(tier).extra_body
         if extra:
-            request["extra_body"] = extra
+            request["extra_body"] = dict(extra)
         reply = self.send(
             request, prompt_name, review_id, unit, reuse=budget is None or budget.reuse
         )
@@ -210,9 +202,6 @@ class LLMClient:
                 return stored
         try:
             message = self.messages.create(**request)
-        except ProviderError as exc:
-            self.log(request, None, started, prompt_name, review_id, unit, error=str(exc))
-            raise
         except anthropic.APIStatusError as exc:
             if self.thinking_conflict(exc, request):
                 return self.send(disable_thinking(request), prompt_name, review_id, unit)

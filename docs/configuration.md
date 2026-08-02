@@ -39,15 +39,13 @@ Beagle can read a public repository without a key. For a private repository, use
 | --- | --- | --- |
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
-| `api` | `"anthropic"` | The format of the requests. Use `"openai"` for a service that speaks `/v1/chat/completions`. |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
-| `extra_body` | `{}` | More fields for the request body. Beagle sends them and does not read them. |
 | `reasoning.model` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
 | `general.model` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
-| `reasoning.extra_body` | `{}` | Request fields for that model alone. They win over `llm.extra_body`. |
+| `reasoning.extra_body` | `{}` | More fields for the request body of that model. Beagle sends them and does not read them. |
 | `general.extra_body` | `{}` | The same, for the other model |
 
-The service must accept tool use. With `api = "anthropic"` it must accept the Anthropic message format at `/v1/messages`. With `api = "openai"` it must accept the OpenAI format at `/v1/chat/completions`.
+The service must accept the Anthropic message format at `/v1/messages`, and it must accept tool use. The reviewer is nothing without tool calls.
 
 ### Keep one review on one provider
 
@@ -70,8 +68,6 @@ quantizations = ["fp8"]
 
 To see the effect, compare `tokens_cached` with `tokens_in` in `llm_log.db`. Inside one review the share climbs above 95 percent. A turn near 0 percent is a turn that changed provider.
 
-Test tool use before you trust a gateway. Some gateways translate every field except the tools. They answer a request with tools in prose, and they make no tool call. The reviewer is nothing without tool calls, so it fails on every unit. A gateway of this kind needs `api = "openai"`.
-
 ### Which model to give to `reasoning`
 
 Beagle has a test set of 56 known problems. They come from the reviews that a commercial tool left on 33 pull requests. Each model read the same code with the same prompt. This is one measurement of one repository. Read it as a guide, not as a law.
@@ -88,7 +84,7 @@ Beagle has a test set of 56 known problems. They come from the reviews that a co
 
 Two results are important. `claude-opus-5` found less than `claude-sonnet-5` and costs 2.5 times more, so it is not the model to use. And `z-ai/glm-5.2` found 79 percent as many problems for 18 percent of the cost.
 
-Any gateway with tool use works, so you can use an open model:
+Any gateway that gives the Anthropic format works, so you can use an open model:
 
 ```toml
 [llm]
@@ -98,17 +94,6 @@ api_key = "PASTE-OPENROUTER-KEY"
 model = "z-ai/glm-5.2"
 [llm.general]
 model = "deepseek/deepseek-v4-flash-0731"
-```
-
-```toml
-[llm]
-base_url = "https://opencode.ai/zen"
-api_key = "PASTE-OPENCODE-KEY"
-api = "openai"
-[llm.reasoning]
-model = "glm-5.2"
-[llm.general]
-model = "deepseek-v4-flash"
 ```
 
 Do not use `moonshotai/kimi-k2.7-code`: it cannot turn reasoning off, so it uses the whole token budget on thought and returns no findings. Do not use `qwen/qwen3-coder-plus`: it returns an empty list for each request.

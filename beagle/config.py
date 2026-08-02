@@ -57,11 +57,7 @@ class RepoCfg(Section):
 
 
 class TierCfg(Section):
-    """One model, and the request fields that belong to it alone.
-
-    The two tiers are rarely one vendor, so a field that pins one is wrong for
-    the other.
-    """
+    """One model, and the request fields that belong to it alone."""
 
     model: str
     extra_body: dict[str, Any] = Field(default_factory=dict)
@@ -73,11 +69,7 @@ class LLMCfg(Section):
 
     base_url: str = "https://api.anthropic.com"
     api_key: str
-    # some gateways translate every field except the tools
-    api: Literal["anthropic", "openai"] = "anthropic"
     headers: dict[str, str] = Field(default_factory=dict)
-    # Fields the service understands and Beagle does not, sent with every call.
-    extra_body: dict[str, Any] = Field(default_factory=dict)
     reasoning: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-sonnet-5"))
     general: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-haiku-4-5"))
 
@@ -86,18 +78,13 @@ class LLMCfg(Section):
     def moved_from_models(cls, data: Any) -> Any:
         if isinstance(data, dict) and "models" in data:
             raise ValueError(
-                "llm.models has moved. Write [llm.reasoning] with model = \"...\" and "
-                "[llm.general] with model = \"...\", so each model can carry its own "
-                "extra_body"
+                "llm.models has moved: write [llm.reasoning] and [llm.general], "
+                "each with model = \"...\""
             )
         return data
 
     def tier(self, name: str) -> TierCfg:
         return self.reasoning if name == "reasoning" else self.general
-
-    def body_for(self, name: str) -> dict[str, Any]:
-        """What one tier sends: the shared fields, with its own on top."""
-        return {**self.extra_body, **self.tier(name).extra_body}
 
 
 class EmbeddingsCfg(Section):

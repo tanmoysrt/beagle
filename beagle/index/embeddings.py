@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import random
 import time
 
 import httpx
 
 from ..config import EmbeddingsCfg
 from ..errors import ProviderError
-from ..http import RETRY_STATUSES, backoff
 from ..storage.dao import CallLog
 
+RETRY_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
+MAX_BACKOFF_SECONDS = 30.0
 # A refused connection is not a busy server: fail fast instead of backing off.
 TRANSPORT_ATTEMPTS = 2
 
@@ -87,10 +89,17 @@ class EmbeddingClient:
             last_error = self.error_for(response)
             if response.status_code not in RETRY_STATUSES:
                 break
-            backoff(attempt, response)
+            self.backoff(attempt, response)
 
         self.log_call(payload, None, started, error=str(last_error))
         raise last_error or ProviderError("embeddings request failed")
+
+    def backoff(self, attempt: int, response: httpx.Response | None = None) -> None:
+        retry_after = response.headers.get("retry-after") if response else None
+        if retry_after and retry_after.isdigit():
+            time.sleep(min(float(retry_after), MAX_BACKOFF_SECONDS))
+            return
+        time.sleep(min(2**attempt + random.random(), MAX_BACKOFF_SECONDS))
 
     def should_drop_dimensions(self, response: httpx.Response, payload: dict) -> bool:
         """Some models and self-hosted servers reject the dimensions parameter."""
