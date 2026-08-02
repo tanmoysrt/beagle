@@ -39,7 +39,7 @@ Beagle can read a public repository without a key. For a private repository, use
 | --- | --- | --- |
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
-| `temperature` | none | Beagle sends this with each call. Leave it out and the service decides, so two reviews of one change disagree. Use `0.0` to make a review repeat. |
+| `temperature` | none | Beagle sends this with each call when you give it a value. |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
 | `reasoning.model` | `"claude-sonnet-5"` | Every judgment about the code: the units, the review, the merge and the second check |
 | `general.model` | `"claude-haiku-4-5"` | The summary, and reading a comment from a person. The answer there is words, not a decision. |
@@ -47,6 +47,14 @@ Beagle can read a public repository without a key. For a private repository, use
 | `general.extra_body` | `{}` | The same, for the other model |
 
 The service must accept the Anthropic message format at `/v1/messages`, and it must accept tool use. The reviewer is nothing without tool calls.
+
+### Two reviews of one change do not agree
+
+Beagle read the same change two times, with `temperature = 0.0` and one pinned provider. The first read found 1 problem. The second found 7. No problem appeared in both.
+
+`temperature` does not repair this, and the measurement above is what says so. A mixture-of-experts model sends each token to a few of its experts, and the choice of expert moves with the other work in the same batch on the server. Two identical questions take two paths. Temperature acts after that point, so it cannot hold the path still.
+
+Read a score from one review as one sample. To compare two prompts or two models, run each of them more than one time and compare the averages. One run against one run measures the noise.
 
 ### Keep one review on one provider
 
