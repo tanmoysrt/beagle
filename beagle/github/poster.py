@@ -317,7 +317,7 @@ def finding_body(finding: Finding, inline: bool) -> str:
     note = f"{finding.category} · confidence {finding.confidence:.0%}"
     if inline:
         # only a finding with a thread of its own can be answered
-        lines += folded(finding) + evidence(finding)
+        lines += folded(finding)
         note += " · reply to this comment if it is wrong and I will remember"
     lines += ["", f"<sub>{note}</sub>", f"<!-- beagle:finding:{finding.fingerprint} -->"]
     return "\n".join(lines)
@@ -369,18 +369,6 @@ def folded(finding: Finding) -> list[str]:
         "",
         "</details>",
     ]
-
-
-def evidence(finding: Finding) -> list[str]:
-    """What Beagle read before it said this, so the author can judge the judgment."""
-    steps = finding.metadata.get("evidence") or []
-    if not steps:
-        return []
-    lines = [
-        f"{step['tool']}({step['input']}) -> {step['result']}".replace("`", "'")[:WRAP_WIDTH]
-        for step in steps
-    ]
-    return ["", "<details>", "<summary>What I read</summary>", "", "```", *lines, "```", "", "</details>"]
 
 
 def render_summary(

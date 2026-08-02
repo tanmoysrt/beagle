@@ -108,38 +108,6 @@ PLAN_UNITS_SCHEMA = {
     "additionalProperties": False,
 }
 
-SUBMIT_CONTEXT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "items": {
-            "type": "array",
-            "description": "The code the reviewer needs, as line ranges. Never the code itself.",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Repository-relative path"},
-                    "start_line": {"type": "integer"},
-                    "end_line": {"type": "integer"},
-                    "why": {
-                        "type": "string",
-                        "description": "One line: what the reviewer should notice here",
-                    },
-                },
-                "required": ["path", "start_line", "end_line", "why"],
-                "additionalProperties": False,
-            },
-        },
-        "notes": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "What you learned that is not code: a commit message, a name "
-            "nothing calls, a pattern the rest of the repository follows.",
-        },
-    },
-    "required": ["items"],
-    "additionalProperties": False,
-}
-
 VERIFY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -251,8 +219,4 @@ OUTPUT_INSTRUCTIONS = {
         "Return the intent by calling the `classify_comment` tool exactly once."
     ),
     "summary": "Return the summary by calling the `write_summary` tool exactly once.",
-    "investigator": (
-        "Hand over the context by calling the `submit_context` tool exactly once. "
-        "Never answer in prose."
-    ),
 }

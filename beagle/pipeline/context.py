@@ -3,13 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..index.embedder import ChunkEmbedder
-from ..llm.client import Budget
 from ..repo.diff import FileDiff
-from ..repo.mirror import Mirror
 from ..storage.dao import IndexStore
-from .investigate import Investigator
 from .models import ReviewUnit
-from .tools import Toolbox
 from .xref import CrossReferences, render as render_xrefs
 
 CHARS_PER_TOKEN = 4
@@ -24,12 +20,9 @@ class UnitContext:
     neighbours: str = ""
     cross_language: str = ""
     similar: str = ""
-    retrieved: str = ""
     truncated: list[str] = field(default_factory=list)
     rag_available: bool = True
     tokens: int = 0
-    evidence: list[dict] = field(default_factory=list)
-    degraded: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         parts = [f"CHANGED CODE UNDER REVIEW\n\n{self.diff_text}"]
@@ -42,36 +35,24 @@ class UnitContext:
             )
         if self.similar:
             parts.append(f"SIMILAR CODE ELSEWHERE IN THE REPOSITORY\n\n{self.similar}")
-        if self.retrieved:
-            parts.append(f"CODE THE INVESTIGATOR READ FOR YOU\n\n{self.retrieved}")
         if self.truncated:
             parts.append("NOT SHOWN (token budget): " + ", ".join(self.truncated))
         return "\n\n".join(parts)
 
-    def known(self) -> str:
-        """What the investigator must not spend its budget fetching again."""
-        parts = [self.neighbours, self.cross_language, self.similar]
-        return "\n\n".join(part for part in parts if part)
-
 
 class ContextBuilder:
     """Fills a unit's token budget: diff, then call-graph neighbours, then
-    retrieved code, then whatever an investigator finds that they missed.
-    What does not fit is named, not dropped silently."""
+    retrieved code. What does not fit is named, not dropped silently."""
 
     def __init__(
         self,
         store: IndexStore,
         embedder: ChunkEmbedder | None = None,
         xrefs: CrossReferences | None = None,
-        mirror: Mirror | None = None,
-        investigator: Investigator | None = None,
     ):
         self.store = store
         self.embedder = embedder
         self.xrefs = xrefs
-        self.mirror = mirror
-        self.investigator = investigator
 
     def build(
         self,
@@ -79,9 +60,6 @@ class ContextBuilder:
         diffs: list[FileDiff],
         budget_tokens: int,
         head_sha: str | None = None,
-        review_id: str = "",
-        budget: Budget | None = None,
-        on_step=None,
     ) -> UnitContext:
         context = UnitContext()
         unit_diffs = [item for item in diffs if item.path in unit.paths]
@@ -107,24 +85,8 @@ class ContextBuilder:
         elif self.embedder is not None:
             context.truncated.append("retrieved similar code")
 
-        used += self.investigate(context, unit, head_sha, review_id, budget, on_step)
         context.tokens = used
         return context
-
-    def investigate(
-        self, context: UnitContext, unit, head_sha, review_id, budget, on_step
-    ) -> int:
-        """Send a reader after what the index could not reach."""
-        if self.investigator is None or self.mirror is None or not head_sha:
-            return 0
-        toolbox = Toolbox(self.mirror, self.store, head_sha, self.embedder, unit.paths)
-        package = self.investigator.gather(
-            unit, context.diff_text, context.known(), toolbox, review_id, budget, on_step
-        )
-        context.retrieved = package.render()
-        context.evidence = package.evidence()
-        context.degraded = package.degraded
-        return estimate(context.retrieved)
 
     def cross_language(self, diffs: list[FileDiff], head_sha: str | None) -> str:
         if self.xrefs is None:

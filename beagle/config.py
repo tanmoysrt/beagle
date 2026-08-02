@@ -128,7 +128,9 @@ class ReviewCfg(Section):
         ]
     )
     max_cost_usd: float = Field(default=2.50, gt=0)
-    token_budget: int = Field(default=60000, gt=0)
+    # A runaway guard, not a plan: one review of a large change reads about
+    # 90k tokens, and max_cost_usd is what actually bounds the spend.
+    token_budget: int = Field(default=250000, gt=0)
 
 
 class ContextCfg(Section):

@@ -14,7 +14,6 @@ SLOT = re.compile(r"\{\{(\w+)\}\}")
 
 PROMPT_NAMES = (
     "reviewer",
-    "investigator",
     "plan",
     "dedup",
     "verify",
@@ -27,7 +26,6 @@ PROMPT_NAMES = (
 # Slots an override must keep, or the pipeline loses its output contract.
 REQUIRED_SLOTS = {
     "reviewer": {"output_instructions", "severity_scale"},
-    "investigator": {"output_instructions"},
     "plan": {"output_instructions"},
     "dedup": {"output_instructions"},
     "verify": {"output_instructions", "severity_scale"},

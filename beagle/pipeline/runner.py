@@ -18,7 +18,6 @@ from .context import ContextBuilder
 from .dedup import Merger
 from .events import EventStream
 from .instructions import InstructionFinder
-from .investigate import Investigator
 from ..memory.filter import MemoryFilter
 from .models import (
     Finding,
@@ -70,9 +69,7 @@ class ReviewRunner:
 
         self.selector = FileSelector(mirror, config.repo.ignore)
         self.instructions = InstructionFinder(mirror, config.context.instruction_files_extra)
-        self.context_builder = ContextBuilder(
-            store, embedder, CrossReferences(mirror), mirror, Investigator(client, prompts)
-        )
+        self.context_builder = ContextBuilder(store, embedder, CrossReferences(mirror))
         self.planner = Planner(client, prompts)
         self.risk = RiskTagger(store)
         self.reviewer = UnitReviewer(client, prompts, config.review)
@@ -145,22 +142,10 @@ class ReviewRunner:
     def review_one(
         self, state: ReviewState, unit: ReviewUnit, prefix: list[dict], per_unit: int
     ) -> tuple[list[Finding], list[str]]:
-        def announce(step) -> None:
-            state.events.emit(
-                "investigation_step",
-                unit=unit.key,
-                tool=step.tool,
-                query=step.query,
-                result=step.brief(),
-            )
-
-        context = self.context_builder.build(
-            unit, state.diffs, per_unit, state.head_sha, state.review_id, state.budget, announce
-        )
+        context = self.context_builder.build(unit, state.diffs, per_unit, state.head_sha)
         state.contexts[unit.key] = context.render()
         if self.embedder is not None and not context.rag_available:
             state.degraded.append("retrieval unavailable")
-        state.degraded.extend(context.degraded)
         return self.reviewer.review(unit, context, prefix, state.review_id, state.budget)
 
     def finalize(self, state: ReviewState) -> ReviewResult:

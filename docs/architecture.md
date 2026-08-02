@@ -93,8 +93,6 @@ beagle/
 │   ├── risk.py          gives a risk tag to a unit from the index
 │   ├── context.py       fills the token budget of each unit
 │   ├── instructions.py  finds the rules files of the repository
-│   ├── investigate.py   a small model reads the repository for the reviewer
-│   ├── tools.py         the seven read-only tools
 │   ├── review.py        one unit, one model call, findings
 │   ├── dedup.py         collapses the repeats; applies the caps
 │   ├── security.py      makes a security finding in application code P0
@@ -161,9 +159,8 @@ flowchart TD
     G --> H[Risk: tag each unit from the call graph]
     H --> I{For each unit}
     I --> J[Collect the context from the index]
-    J --> K[Investigate: a small model reads what the index missed]
-    K --> M[Review the unit and report the findings]
-    M --> I
+    J --> K[Review the unit and report the findings]
+    K --> I
     I --> N[Merge the repeats, apply the caps]
     N --> O[Make a security finding P0]
     O --> P[Memory: hide what the team dismissed]
@@ -299,17 +296,10 @@ The embedding step is separate from the parse step. A block gets a vector later.
 2. The other files that still name what the diff removes or renames.
 3. The related symbols from the call graph, first the signatures, then the bodies.
 4. Similar code from the vector search.
-5. Whatever an investigator finds that the first four missed.
 
 Beagle stops when the budget is full. It writes the names of the parts that did not fit into the prompt and into the summary. Nothing disappears in silence.
 
-### The investigator
-
-Steps 1 to 4 are code: tree-sitter, sqlite-vec and `git grep`. They are fast, free and exact, and they only find what they were written to find. Step 5 is a small model with the seven read-only tools in `pipeline/tools.py`: `read_file`, `read_symbol`, `find_callers`, `find_callees`, `search_code`, `grep` and `git_history`. It gets the diff and the context that steps 1 to 4 collected, so it looks for the gaps.
-
-It answers with line ranges and short notes, never with code. Beagle reads each range from the repository. So nothing the model writes can reach the reviewer as the source. Each call goes to the stream as an `investigation_step` line.
-
-The reviewer never sees the search, only the result. This is the important part of the design. A model that reads for ten turns then judges answers worse than one that judges once with good context. Its attention goes to the search. So the two jobs belong to two models. The investigator collects and does not judge. The reviewer judges and cannot look anything up.
+All four steps are code: tree-sitter, sqlite-vec and `git grep`. They are fast, free and exact. Beagle gave the same job to a model with tools two times, and measured it two times. A reviewer with tools found 2 of 9 known defects where the same reviewer with this context found 4. A separate model with tools, which collected context and gave it to the reviewer, found 25 of 56 where this context found 31. It also cost 1.8 times more and took 3 times longer. So the retrieval stays in code.
 
 ### The model calls
 

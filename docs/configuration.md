@@ -122,7 +122,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | `max_findings` | `8` | The largest number of findings in one review |
 | `categories` | bug, security, performance, correctness, style, test_gap | The categories that the model can use |
 | `max_cost_usd` | `2.50` | Beagle stops the review at this cost |
-| `token_budget` | `60000` | Beagle stops the review at this number of tokens |
+| `token_budget` | `250000` | Beagle stops the review at this number of tokens. It guards against a runaway; `max_cost_usd` is the real limit. |
 
 Beagle limits P3 findings to 3, P4 findings to 2, and P5 findings to 1 in one review. A `test_gap` finding never goes above P4, so a missing test is a nit and cannot stop a merge. These limits are in the code. You cannot change them with the configuration.
 

@@ -57,11 +57,6 @@ class Reply:
     model: str
     stop_reason: str | None = None
     reused: bool = False
-    blocks: list[dict[str, Any]] = field(default_factory=list)
-
-    @property
-    def tool_calls(self) -> list[dict[str, Any]]:
-        return [block for block in self.blocks if block["type"] == "tool_use"]
 
 
 @dataclass
@@ -129,53 +124,25 @@ class LLMClient:
         budget: Budget | None = None,
     ) -> Reply:
         """One call that must answer with a value matching the schema."""
-        return self.converse(
-            tier=tier,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            tools=[
-                {
-                    "name": tool_name,
-                    "description": f"Return the {tool_name} result.",
-                    "input_schema": schema,
-                }
-            ],
-            max_tokens=max_tokens,
-            force_tool=tool_name,
-            prompt_name=prompt_name,
-            review_id=review_id,
-            unit=unit,
-            budget=budget,
-        )
-
-    def converse(
-        self,
-        tier: str,
-        system: list[dict[str, Any]],
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        max_tokens: int = 8000,
-        force_tool: str | None = None,
-        prompt_name: str | None = None,
-        review_id: str | None = None,
-        unit: str | None = None,
-        budget: Budget | None = None,
-    ) -> Reply:
-        """One turn of a conversation the model may answer with a tool call."""
         if budget is not None:
             budget.check()
         request = {
             "model": self.model_for(tier),
             "max_tokens": max_tokens,
             "system": system,
-            "messages": messages,
-            "tools": tools,
+            "messages": [{"role": "user", "content": user}],
+            "tools": [
+                {
+                    "name": tool_name,
+                    "description": f"Return the {tool_name} result.",
+                    "input_schema": schema,
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": tool_name},
             # A reasoning model behind a gateway thinks until max_tokens is gone and
             # then emits an empty tool call. The schema is the place to reason.
             "thinking": {"type": "disabled"},
         }
-        if force_tool:
-            request["tool_choice"] = {"type": "tool", "name": force_tool}
         extra = self.cfg.tier(tier).extra_body
         if extra:
             request["extra_body"] = dict(extra)
@@ -232,12 +199,11 @@ class LLMClient:
         data = self.call_log.find(request_hash(request), PROMPT_SET_VERSION, review_id)
         if data is None:
             return None
-        blocks = keep_blocks(data.get("content") or [])
-        payload, text = collapse(blocks)
+        payload, text = collapse(data.get("content") or [])
         if request.get("tool_choice") and not payload:
             return None
         return Reply(payload, text, Usage(), data.get("model", request["model"]),
-                     data.get("stop_reason"), reused=True, blocks=blocks)
+                     data.get("stop_reason"), reused=True)
 
     def thinking_conflict(self, exc: anthropic.APIStatusError, request: dict) -> bool:
         """Some models reject a forced tool choice while thinking is on."""
@@ -260,14 +226,13 @@ class LLMClient:
 
     def build_reply(self, message: Any, request: dict) -> Reply:
         usage = self.usage_of(message, request["model"])
-        blocks = keep_blocks(block.model_dump() for block in message.content)
-        data, text = collapse(blocks)
+        data, text = collapse(block.model_dump() for block in message.content)
         if request.get("tool_choice") and not data:
             raise ProviderError(
                 f"model {request['model']} returned no structured result "
                 f"(stop reason: {message.stop_reason})"
             )
-        return Reply(data, text, usage, message.model, message.stop_reason, blocks=blocks)
+        return Reply(data, text, usage, message.model, message.stop_reason)
 
     def usage_of(self, message: Any, model: str) -> Usage:
         raw = message.usage
@@ -313,25 +278,15 @@ class LLMClient:
         )
 
 
-def keep_blocks(blocks) -> list[dict[str, Any]]:
-    """Only what can go back to the service: the text and the tool calls.
-
-    Thinking blocks are dropped; a gateway that sends them will not take them back.
-    """
-    kept = []
+def collapse(blocks) -> tuple[dict[str, Any], str]:
+    """The tool result and anything the model said beside it."""
+    data, text = {}, ""
     for block in blocks:
-        if block.get("type") == "text" and block.get("text"):
-            kept.append({"type": "text", "text": block["text"]})
-        elif block.get("type") == "tool_use":
-            kept.append(
-                {
-                    "type": "tool_use",
-                    "id": block.get("id"),
-                    "name": block.get("name"),
-                    "input": tool_input(block.get("input")),
-                }
-            )
-    return kept
+        if block.get("type") == "tool_use":
+            data = tool_input(block.get("input"))
+        elif block.get("type") == "text":
+            text += block.get("text") or ""
+    return data, text
 
 
 def tool_input(payload: Any) -> dict[str, Any]:
@@ -345,16 +300,6 @@ def tool_input(payload: Any) -> dict[str, Any]:
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}
-
-
-def collapse(blocks: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
-    data, text = {}, ""
-    for block in blocks:
-        if block["type"] == "tool_use":
-            data = block["input"]
-        else:
-            text += block["text"]
-    return data, text
 
 
 def make_budget(review: ReviewCfg) -> Budget:

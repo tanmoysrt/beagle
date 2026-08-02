@@ -51,9 +51,7 @@ class UnitReviewer:
             budget=budget,
         )
         entries, anomaly = read_entries(reply.data, "findings")
-        findings = self.findings_from(
-            entries, unit, context_label(context), context.evidence
-        )
+        findings = self.findings_from(entries, unit, context_label(context))
         return findings, [f"{unit.key}: {anomaly}"] if anomaly else []
 
     def user_message(self, unit: ReviewUnit, context: UnitContext) -> str:
@@ -64,27 +62,16 @@ class UnitReviewer:
             header.append(f"Why these files belong together: {unit.rationale}")
         return "\n".join(header) + "\n\n" + context.render()
 
-    def findings_from(
-        self,
-        entries: list[dict],
-        unit: ReviewUnit,
-        label: str,
-        evidence: list[dict] | None = None,
-    ) -> list[Finding]:
-        made = (self.finding_from(raw, unit, label, evidence) for raw in entries)
+    def findings_from(self, entries: list[dict], unit: ReviewUnit, label: str) -> list[Finding]:
+        made = (self.finding_from(raw, unit, label) for raw in entries)
         return [finding for finding in made if finding is not None]
 
-    def finding_from(
-        self, raw: dict, unit: ReviewUnit, label: str, evidence: list[dict] | None
-    ) -> Finding | None:
+    def finding_from(self, raw: dict, unit: ReviewUnit, label: str) -> Finding | None:
         title = (raw.get("title") or "").strip()
         body = (raw.get("body") or "").strip()
         if not title or not body:
             return None
         severity = coerce_severity(raw.get("severity"))
-        metadata: dict = {"risk_tags": unit.risk_tags}
-        if evidence:
-            metadata["evidence"] = evidence
         return Finding(
             file=raw.get("file") or unit.paths[0],
             line_start=raw.get("line_start"),
@@ -99,7 +86,7 @@ class UnitReviewer:
             locations=read_locations(raw),
             unit=unit.key,
             context_used=label,
-            metadata=metadata,
+            metadata={"risk_tags": unit.risk_tags},
         )
 
 

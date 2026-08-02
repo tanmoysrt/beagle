@@ -48,7 +48,7 @@ min_severity = "P5"
 fail_on = "P1"
 max_findings = 8
 max_cost_usd = 2.50
-token_budget = 60000
+token_budget = 250000
 
 [context]
 instruction_files = "auto"
