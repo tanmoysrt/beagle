@@ -107,7 +107,9 @@ class EvalHarness:
         return report
 
     def run_case(self, case: Case) -> CaseResult:
-        request = ReviewRequest(review_id=f"eval-{case.id}", diff=case.diff)
+        # An eval measures the model, never the stored answer: the review id
+        # repeats on every run, so reuse would score the first run twice.
+        request = ReviewRequest(review_id=f"eval-{case.id}", diff=case.diff, fresh=True)
         result = self.service.runner().run(request, EventStream())
         outcome = CaseResult(id=case.id, cost_usd=result.summary.cost_usd)
         matched: set[int] = set()

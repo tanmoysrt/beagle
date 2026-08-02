@@ -19,6 +19,10 @@ SPARE_TURNS = 3
 # saving.
 MAX_TOKENS = 250000
 TRANSCRIPT_RESULT_CHARS = 2000
+VERDICT = (
+    "That is everything you read. Report every defect the change introduces, worst "
+    "first. Report an empty list only if the change introduces none."
+)
 BRIEF_CHARS = 120
 
 
@@ -71,7 +75,7 @@ class AgentReviewer:
     """Reviews one unit as a loop: read the diff, investigate, then report.
 
     The model chooses what to read, so a unit costs what the change deserves.
-    The step budget and the input cap end the loop with a forced report.
+    The investigation and the verdict are two questions, not one conversation.
     """
 
     def __init__(self, client: LLMClient, prompts, cfg: ReviewCfg):
@@ -92,13 +96,12 @@ class AgentReviewer:
         trail = Investigation(opening=self.opening(unit, diff_text))
         messages: list[dict[str, Any]] = [{"role": "user", "content": trail.opening}]
         anomalies: list[str] = []
-        force = self.cfg.max_steps <= 0
 
         for _ in range(self.cfg.max_steps + SPARE_TURNS):
             try:
-                reply = self.turn(system, messages, review_id, unit.key, budget, force)
+                reply = self.turn(system, messages, review_id, unit.key, budget)
             except ProviderError as exc:
-                anomalies.append(f"{unit.key}: the reviewer stopped early ({exc})")
+                anomalies.append(f"{unit.key}: the investigation stopped early ({exc})")
                 break
 
             report = next(
@@ -110,25 +113,48 @@ class AgentReviewer:
                     anomalies.append(f"{unit.key}: {anomaly}")
                 return entries, anomalies, trail
 
-            if force:
-                anomalies.append(f"{unit.key}: the reviewer never reported")
-                break
-            if not reply.blocks:
-                force = True
-                continue
-
             calls = [call for call in reply.tool_calls if call["name"] != REPORT_TOOL]
+            cut_off = not calls and reply.stop_reason == "max_tokens"
+            if not reply.blocks or (not calls and not cut_off):
+                break
+
             results = self.act_all(calls, toolbox, trail, on_step)
             trail.stopped = self.spent(trail, reply.usage.tokens_in)
-            cut_off = not calls and reply.stop_reason == "max_tokens"
-            force = bool(trail.stopped) or (not calls and not cut_off)
-
             messages.append({"role": "assistant", "content": reply.blocks})
-            messages.append(
-                {"role": "user", "content": results + [self.note(trail, force, cut_off)]}
-            )
+            messages.append({"role": "user", "content": results + [self.note(trail, cut_off)]})
+            if trail.stopped:
+                break
 
-        return [], anomalies, trail
+        entries, anomaly = self.report(trail, system, review_id, unit, budget)
+        if anomaly:
+            anomalies.append(f"{unit.key}: {anomaly}")
+        return entries, anomalies, trail
+
+    def report(
+        self,
+        trail: Investigation,
+        system: list[dict],
+        review_id: str,
+        unit,
+        budget: Budget | None,
+    ) -> tuple[list[dict], str | None]:
+        """The findings as their own question, not one more turn of the loop."""
+        try:
+            reply = self.client.structured(
+                tier="reasoning",
+                system=system,
+                user=f"{trail.transcript()}\n\n{VERDICT}",
+                schema=report_findings_schema(self.cfg.categories),
+                tool_name=REPORT_TOOL,
+                max_tokens=MAX_TOKENS,
+                prompt_name="reviewer",
+                review_id=review_id,
+                unit=unit.key,
+                budget=budget,
+            )
+        except ProviderError as exc:
+            return [], f"the reviewer never reported ({exc})"
+        return read_entries(reply.data, "findings")
 
     def turn(
         self,
@@ -137,7 +163,6 @@ class AgentReviewer:
         review_id: str,
         unit: str,
         budget: Budget | None,
-        force: bool,
     ) -> Reply:
         return self.client.converse(
             tier="reasoning",
@@ -145,7 +170,6 @@ class AgentReviewer:
             messages=messages,
             tools=TOOL_SPECS + [self.report_spec()],
             max_tokens=MAX_TOKENS,
-            force_tool=REPORT_TOOL if force else None,
             prompt_name="reviewer",
             review_id=review_id,
             unit=unit,
@@ -173,19 +197,13 @@ class AgentReviewer:
             results.append(tool_result(call, step.result))
         return results
 
-    def note(self, trail: Investigation, force: bool, cut_off: bool = False) -> dict:
+    def note(self, trail: Investigation, cut_off: bool = False) -> dict:
         """A model that cannot see its budget spends all of it, then reports nothing."""
         if cut_off:
             return {
                 "type": "text",
                 "text": "Your last answer stopped before you called a tool. Keep the "
                 "reasoning short and call the tool you need.",
-            }
-        if force:
-            return {
-                "type": "text",
-                "text": "Your investigation is over. Call report_findings now with every "
-                "defect you found, worst first. Report an empty list only if you found none.",
             }
         left = self.cfg.max_steps - len(trail.steps)
         return {
