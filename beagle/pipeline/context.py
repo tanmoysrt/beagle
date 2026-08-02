@@ -86,7 +86,9 @@ class ContextBuilder:
         used += estimate(context.cross_language)
 
         remaining = budget_tokens - used
-        neighbours, neighbour_tokens, skipped = self.call_graph_context(unit_diffs, remaining)
+        neighbours, neighbour_tokens, skipped = self.call_graph_context(
+            unit_diffs, diffs, remaining
+        )
         context.neighbours = neighbours
         context.truncated.extend(skipped)
         used += neighbour_tokens
@@ -142,12 +144,12 @@ class ContextBuilder:
         return render_xrefs(self.xrefs.find(diffs, head_sha))
 
     def call_graph_context(
-        self, diffs: list[FileDiff], budget_tokens: int
+        self, unit_diffs: list[FileDiff], diffs: list[FileDiff], budget_tokens: int
     ) -> tuple[str, int, list[str]]:
         if budget_tokens <= 0:
             return "", 0, ["call-graph neighbours"]
 
-        related = self.collect_related(diffs) + self.called_by_new_code(diffs)
+        related = self.collect_related(unit_diffs) + self.called_by_new_code(unit_diffs, diffs)
         signatures, bodies, skipped = [], [], []
         used = 0
 
@@ -175,24 +177,34 @@ class ContextBuilder:
             text += "\n\n" + "\n\n".join(bodies)
         return text, used, skipped
 
-    def called_by_new_code(self, diffs: list[FileDiff]) -> list[dict]:
+    def called_by_new_code(
+        self, unit_diffs: list[FileDiff], diffs: list[FileDiff]
+    ) -> list[dict]:
         """What the added lines call, looked up by name.
 
-        A method added in this change is not in the index, so it has no edges.
-        Its body still names the code it depends on, and that code is indexed.
+        A method added in this change is not in the index, so it has no edges
+        and the call graph cannot reach what it uses. Its body still names that
+        code, and that code is indexed.
+
+        The whole change is read, not only this unit. A unit often reviews a
+        caller while the method it calls was added in another unit, and the
+        answer to "does this persist" lives one hop below that method.
         """
-        names: set[str] = set()
-        for file_diff in diffs:
-            for _, text in file_diff.added_lines:
-                names.update(CALL_SITE.findall(text))
-        names -= NOT_A_CALL
+        own = self.called_names(unit_diffs)
         entries = []
-        for name in sorted(names):
+        for name in sorted(own) + sorted(self.called_names(diffs) - own):
             for symbol in self.store.symbols_named(name, limit=1):
                 entries.append(self.entry(symbol, f"called by the new code ({name})"))
             if len(entries) >= MAX_CALLED:
                 break
         return entries
+
+    def called_names(self, diffs: list[FileDiff]) -> set[str]:
+        names: set[str] = set()
+        for file_diff in diffs:
+            for _, text in file_diff.added_lines:
+                names.update(CALL_SITE.findall(text))
+        return names - NOT_A_CALL
 
     def collect_related(self, diffs: list[FileDiff]) -> list[dict]:
         seen, related = set(), []
