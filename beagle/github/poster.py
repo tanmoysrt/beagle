@@ -94,7 +94,9 @@ class ReviewPoster:
         blocking = verdict == "request_changes" and verdict != last_verdict
         delivered = 0
         if comments or blocking:
-            delivered = self.submit(number, head_sha, verdict, comments)
+            delivered = self.submit(
+                number, head_sha, verdict, comments, result.summary.description
+            )
         return {
             "added": delivered,
             "resolved": len(closing),
@@ -117,8 +119,13 @@ class ReviewPoster:
             else:
                 stored = self.github.create_issue_comment(number, body).get("id")
         except GithubError as exc:
-            log.warning("could not write the summary on #%s: %s", number, exc)
-            return
+            # Somebody deleted it. Write a new one, or the review links to nothing.
+            log.info("summary %s on #%s is gone (%s), writing a new one", stored, number, exc)
+            try:
+                stored = self.github.create_issue_comment(number, body).get("id")
+            except GithubError as second:
+                log.warning("could not write the summary on #%s: %s", number, second)
+                return
         self.sync.update_pr(number, summary_comment=stored)
 
     def summary_state(self, number: int):
@@ -207,7 +214,14 @@ class ReviewPoster:
             comments.append(comment_payload(finding, spot, commentable[spot.file]))
         return comments, unplaced
 
-    def submit(self, number: int, head_sha: str, verdict: str, comments: list[dict]) -> int:
+    def submit(
+        self,
+        number: int,
+        head_sha: str,
+        verdict: str,
+        comments: list[dict],
+        description: str = "",
+    ) -> int:
         """The review carries the findings and the state. The summary lives in its
         own comment, so the body stays empty and the pull request does not show
         the same sentence twice. GitHub allows an empty body when comments come
@@ -217,7 +231,7 @@ class ReviewPoster:
         offered when GitHub refuses the batch.
         """
         event = "REQUEST_CHANGES" if verdict == "request_changes" else "COMMENT"
-        body = self.summary_link(number) if event == "REQUEST_CHANGES" else ""
+        body = self.request_body(number, description) if event == "REQUEST_CHANGES" else ""
         for attempt in (event, "COMMENT"):
             try:
                 self.github.submit_review(number, attempt, body, comments, head_sha)
@@ -228,12 +242,17 @@ class ReviewPoster:
                 comments = []  # a rejected batch must not post twice
         return 0
 
-    def summary_link(self, number: int) -> str:
+    def request_body(self, number: int, description: str) -> str:
+        """GitHub demands a body to request changes, and a bare link is not one.
+
+        One line of what is wrong, then where the rest of it lives.
+        """
         stored = self.sync.pr(number).get("summary_comment")
         if not stored:
-            return "Changes requested. The summary is in the comments."
+            return description or "Changes requested. The summary is in the comments."
         repo = self.github.repo
-        return f"[Beagle's summary](https://github.com/{repo}/pull/{number}#issuecomment-{stored})"
+        link = f"[Beagle's summary](https://github.com/{repo}/pull/{number}#issuecomment-{stored})"
+        return f"{description}\n\n{link}" if description else link
 
     def refresh(self, number: int) -> None:
         """Rewrite the summary in place after a finding was withdrawn.
