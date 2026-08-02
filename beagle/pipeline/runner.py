@@ -189,12 +189,19 @@ class ReviewRunner:
         return result
 
     def enforce_policy(self, findings: list[Finding]) -> list[Finding]:
-        """Security findings ignore the floor; everything else respects it."""
+        """Security ignores the severity floor. Nothing ignores the confidence one.
+
+        The severity floor is a choice about what is worth reporting. The
+        confidence floor is the reviewer disowning its own finding, and that
+        holds whatever the category.
+        """
         floor = self.config.review.min_severity
+        least = self.config.review.min_confidence
         return [
             demote_advice(finding)
             for finding in findings
-            if finding.is_security or finding.severity.at_least(floor)
+            if (finding.is_security or finding.severity.at_least(floor))
+            and finding.confidence >= least
         ]
 
     def resolve_diff(

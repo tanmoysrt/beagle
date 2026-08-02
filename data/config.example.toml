@@ -47,6 +47,7 @@ batch_size = 128
 min_severity = "P5"
 fail_on = "P1"
 max_findings = 12
+min_confidence = 0.35
 max_cost_usd = 2.50
 token_budget = 250000
 

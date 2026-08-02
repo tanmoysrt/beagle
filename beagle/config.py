@@ -119,6 +119,9 @@ class ReviewCfg(Section):
     min_severity: Severity = Severity.P5
     fail_on: Severity = Severity.P1
     max_findings: int = Field(default=12, ge=1)
+    # A finding the reviewer does not believe is not worth the author's time.
+    # It reported one at 0.15 whose own body ended "Correct behavior - no defect".
+    min_confidence: float = Field(default=0.35, ge=0.0, le=1.0)
     categories: list[str] = Field(
         default_factory=lambda: [
             "bug",

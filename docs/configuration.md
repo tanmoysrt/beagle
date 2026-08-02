@@ -120,6 +120,7 @@ Do not change `dims` after the first index. The server refuses to start if the v
 | `min_severity` | `"P5"` | Beagle does not report a finding below this level. Security findings are an exception. |
 | `fail_on` | `"P1"` | If a finding has this level or a worse level, the verdict is `request_changes`. |
 | `max_findings` | `12` | The largest number of findings in one review |
+| `min_confidence` | `0.35` | Beagle drops a finding that the reviewer itself does not believe. This applies to every category. |
 | `categories` | bug, security, performance, correctness, style, test_gap | The categories that the model can use |
 | `max_cost_usd` | `2.50` | Beagle stops the review at this cost |
 | `token_budget` | `250000` | Beagle stops the review at this number of tokens. It guards against a runaway; `max_cost_usd` is the real limit. |

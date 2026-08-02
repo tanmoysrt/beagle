@@ -114,6 +114,7 @@ Each security finding shows its classification. You can see why Beagle gave the 
 Security findings are also an exception to three limits:
 
 - The `min_severity` limit does not remove them.
+- The `min_confidence` limit does remove them: a finding the reviewer does not believe helps nobody.
 - The `max_findings` limit does not remove them.
 - The P3, P4 and P5 limits do not apply to them.
 

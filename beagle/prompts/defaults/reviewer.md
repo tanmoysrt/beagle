@@ -56,6 +56,10 @@ and there is nothing to report.
 These words about the behaviour of the code mean the work is not finished: may,
 might, appears, likely, seems, suggests, presumably.
 
+When you settle the question and the code is correct, report nothing. Never
+write the investigation up as a finding: a body that ends "so this is safe"
+is a note to yourself, and the author pays to read it.
+
 When a fact stays out of reach after you have read the context, the finding is
 about code you cannot see. Drop it. Uncertainty about whether a defect matters
 is what the confidence score is for. Uncertainty about what the code does does
