@@ -88,6 +88,17 @@ class IndexStore:
         )
         return [dict(row) for row in rows]
 
+    def symbols_named(self, name: str, limit: int = 8) -> list[dict[str, Any]]:
+        rows = self.core.query(
+            "select s.*, f.path from symbols s join files f on f.id = s.file_id"
+            " where s.name = ? or s.qualified_name = ? order by f.path, s.start_line limit ?",
+            (name, name, limit),
+        )
+        return [dict(row) for row in rows]
+
+    def symbol_body(self, symbol_id: int) -> str | None:
+        return self.core.scalar("select body from chunks where symbol_id = ? limit 1", (symbol_id,))
+
     def unresolved_edges(self) -> list[tuple[int, str]]:
         rows = self.core.query(
             "select id, dst_name from symbol_edges where dst_symbol_id is null"

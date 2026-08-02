@@ -42,14 +42,17 @@ If you replace `reviewer.md` or `verify.md`, your file must contain these two pa
 
 - `{{output_instructions}}`
 - `{{severity_scale}}`
+- `{{investigation}}`, in `reviewer.md` only
 
 Beagle puts text in the place of each part. If a part is not there, the server stops when it starts. The server does not stop in the middle of a review.
+
+`{{investigation}}` changes with `review.agent_mode`. In agent mode it tells the reviewer how to use its tools. If agent mode is off, it names the context that Beagle collected for the reviewer.
 
 These are the parts of each prompt:
 
 | Prompt | Parts |
 | --- | --- |
-| `reviewer.md` | `{{severity_scale}}`, `{{repo_overview}}`, `{{instruction_files}}`, `{{conventions}}`, `{{output_instructions}}` |
+| `reviewer.md` | `{{investigation}}`, `{{severity_scale}}`, `{{repo_overview}}`, `{{instruction_files}}`, `{{conventions}}`, `{{output_instructions}}` |
 | `plan.md` | `{{max_units}}`, `{{output_instructions}}` |
 | `dedup.md` | `{{p5_cap}}`, `{{p4_cap}}`, `{{output_instructions}}` |
 | `verify.md` | `{{severity_scale}}`, `{{output_instructions}}` |

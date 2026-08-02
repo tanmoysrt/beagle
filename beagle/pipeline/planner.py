@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from ..constants import MAX_UNITS
 from ..llm.client import Budget, LLMClient
 from ..prompts.loader import PromptSet, plan_values
 from ..repo.diff import FileDiff
 from .models import ReviewUnit
 from .schemas import OUTPUT_INSTRUCTIONS, PLAN_UNITS_SCHEMA, read_entries
 
-MAX_UNITS = 6
 SINGLE_UNIT_THRESHOLD = 2
 
 

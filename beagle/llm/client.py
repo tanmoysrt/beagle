@@ -9,9 +9,10 @@ from typing import Any
 import anthropic
 
 from ..config import LLMCfg, ReviewCfg
-from ..constants import PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
+from ..constants import MAX_UNITS, PROMPT_SET_VERSION, REVIEW_DEADLINE_SECONDS
 from ..errors import BudgetExceeded, ProviderError
 from ..storage.dao import CallLog
+from .openai_api import OpenAIMessages
 
 # In, out, and the share of the input rate a cached read costs. The first key
 # that appears in the model name wins, so specific names come first. Rough
@@ -57,6 +58,11 @@ class Reply:
     model: str
     stop_reason: str | None = None
     reused: bool = False
+    blocks: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def tool_calls(self) -> list[dict[str, Any]]:
+        return [block for block in self.blocks if block["type"] == "tool_use"]
 
 
 @dataclass
@@ -99,13 +105,20 @@ class LLMClient:
     def __init__(self, cfg: LLMCfg, call_log: CallLog | None = None, timeout: float = 300.0):
         self.cfg = cfg
         self.call_log = call_log
-        self.client = anthropic.Anthropic(
-            api_key=cfg.api_key,
-            base_url=cfg.base_url,
-            default_headers=dict(cfg.headers),
+        self.messages = self.transport(timeout)
+
+    def transport(self, timeout: float):
+        if self.cfg.api == "openai":
+            return OpenAIMessages(
+                self.cfg.base_url, self.cfg.api_key, dict(self.cfg.headers), timeout
+            )
+        return anthropic.Anthropic(
+            api_key=self.cfg.api_key,
+            base_url=self.cfg.base_url,
+            default_headers=dict(self.cfg.headers),
             timeout=timeout,
             max_retries=3,
-        )
+        ).messages
 
     def model_for(self, tier: str) -> str:
         return getattr(self.cfg.models, tier)
@@ -124,26 +137,53 @@ class LLMClient:
         budget: Budget | None = None,
     ) -> Reply:
         """One call that must answer with a value matching the schema."""
-        if budget is not None:
-            budget.check()
-        model = self.model_for(tier)
-        request = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "system": system,
-            "messages": [{"role": "user", "content": user}],
-            "tools": [
+        return self.converse(
+            tier=tier,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            tools=[
                 {
                     "name": tool_name,
                     "description": f"Return the {tool_name} result.",
                     "input_schema": schema,
                 }
             ],
-            "tool_choice": {"type": "tool", "name": tool_name},
+            max_tokens=max_tokens,
+            force_tool=tool_name,
+            prompt_name=prompt_name,
+            review_id=review_id,
+            unit=unit,
+            budget=budget,
+        )
+
+    def converse(
+        self,
+        tier: str,
+        system: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int = 8000,
+        force_tool: str | None = None,
+        prompt_name: str | None = None,
+        review_id: str | None = None,
+        unit: str | None = None,
+        budget: Budget | None = None,
+    ) -> Reply:
+        """One turn of a conversation the model may answer with a tool call."""
+        if budget is not None:
+            budget.check()
+        request = {
+            "model": self.model_for(tier),
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": messages,
+            "tools": tools,
             # A reasoning model behind a gateway thinks until max_tokens is gone and
             # then emits an empty tool call. The schema is the place to reason.
             "thinking": {"type": "disabled"},
         }
+        if force_tool:
+            request["tool_choice"] = {"type": "tool", "name": force_tool}
         reply = self.send(
             request, prompt_name, review_id, unit, reuse=budget is None or budget.reuse
         )
@@ -166,7 +206,10 @@ class LLMClient:
             if stored is not None:
                 return stored
         try:
-            message = self.client.messages.create(**request)
+            message = self.messages.create(**request)
+        except ProviderError as exc:
+            self.log(request, None, started, prompt_name, review_id, unit, error=str(exc))
+            raise
         except anthropic.APIStatusError as exc:
             if self.thinking_conflict(exc, request):
                 return self.send(disable_thinking(request), prompt_name, review_id, unit)
@@ -197,16 +240,12 @@ class LLMClient:
         data = self.call_log.find(request_hash(request), PROMPT_SET_VERSION, review_id)
         if data is None:
             return None
-        payload, text = {}, ""
-        for block in data.get("content") or []:
-            if block.get("type") == "tool_use":
-                payload = dict(block.get("input") or {})
-            elif block.get("type") == "text":
-                text += block.get("text") or ""
+        blocks = keep_blocks(data.get("content") or [])
+        payload, text = collapse(blocks)
         if request.get("tool_choice") and not payload:
             return None
         return Reply(payload, text, Usage(), data.get("model", request["model"]),
-                     data.get("stop_reason"), reused=True)
+                     data.get("stop_reason"), reused=True, blocks=blocks)
 
     def thinking_conflict(self, exc: anthropic.APIStatusError, request: dict) -> bool:
         """Some models reject a forced tool choice while thinking is on."""
@@ -229,18 +268,14 @@ class LLMClient:
 
     def build_reply(self, message: Any, request: dict) -> Reply:
         usage = self.usage_of(message, request["model"])
-        data, text = {}, ""
-        for block in message.content:
-            if block.type == "tool_use":
-                data = dict(block.input)
-            elif block.type == "text":
-                text += block.text
+        blocks = keep_blocks(block.model_dump() for block in message.content)
+        data, text = collapse(blocks)
         if request.get("tool_choice") and not data:
             raise ProviderError(
                 f"model {request['model']} returned no structured result "
                 f"(stop reason: {message.stop_reason})"
             )
-        return Reply(data, text, usage, message.model, message.stop_reason)
+        return Reply(data, text, usage, message.model, message.stop_reason, blocks=blocks)
 
     def usage_of(self, message: Any, model: str) -> Usage:
         raw = message.usage
@@ -286,8 +321,59 @@ class LLMClient:
         )
 
 
+def keep_blocks(blocks) -> list[dict[str, Any]]:
+    """Only what can go back to the service: what it said and what it called.
+
+    Thinking blocks are dropped. A gateway that returns them will not accept
+    them back, and the loop has to send the whole turn to continue.
+    """
+    kept = []
+    for block in blocks:
+        if block.get("type") == "text" and block.get("text"):
+            kept.append({"type": "text", "text": block["text"]})
+        elif block.get("type") == "tool_use":
+            kept.append(
+                {
+                    "type": "tool_use",
+                    "id": block.get("id"),
+                    "name": block.get("name"),
+                    "input": tool_input(block.get("input")),
+                }
+            )
+    return kept
+
+
+def tool_input(payload: Any) -> dict[str, Any]:
+    """A gateway sometimes hands back the arguments as text rather than as an object."""
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def collapse(blocks: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
+    data, text = {}, ""
+    for block in blocks:
+        if block["type"] == "tool_use":
+            data = block["input"]
+        else:
+            text += block["text"]
+    return data, text
+
+
 def make_budget(review: ReviewCfg) -> Budget:
-    return Budget(max_cost_usd=review.max_cost_usd, token_budget=review.token_budget)
+    """An agent review is bounded per unit, so the review-wide token cap has to
+    leave room for every unit to spend its own. Cost and the deadline still
+    stop it; `token_budget` only catches a runaway."""
+    tokens = review.token_budget
+    if review.agent_mode:
+        tokens = max(tokens, review.max_input_tokens * MAX_UNITS)
+    return Budget(max_cost_usd=review.max_cost_usd, token_budget=tokens)
 
 
 def disable_thinking(request: dict) -> dict:

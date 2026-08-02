@@ -147,6 +147,7 @@ Each line is one JSON object. Each line has an `event` field, a `seq` field, and
 | --- | --- |
 | `review_started` | The review started |
 | `unit_started` | A unit started |
+| `investigation_step` | The reviewer used a tool. The line gives the tool, the query and the first line of the result |
 | `unit_complete` | A unit is complete |
 | `finding` | A finding is in the result |
 | `finding_suppressed` | The memory hid a finding |

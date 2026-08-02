@@ -216,6 +216,7 @@ def schema(request: Request, token: str = Depends(require_token)):
         "events": [
             "review_started",
             "unit_started",
+            "investigation_step",
             "finding",
             "finding_suppressed",
             "unit_complete",

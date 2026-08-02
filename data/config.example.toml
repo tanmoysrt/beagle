@@ -41,6 +41,10 @@ fail_on = "P1"
 max_findings = 8
 max_cost_usd = 2.50
 token_budget = 60000
+# the reviewer reads the repository with tools; max_steps is the cost knob
+agent_mode = true
+max_steps = 12
+max_input_tokens = 80000
 
 [context]
 instruction_files = "auto"

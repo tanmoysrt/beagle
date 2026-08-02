@@ -91,9 +91,11 @@ beagle/
 │   ├── models.py        Finding, ReviewUnit, ReviewState, ReviewSummary
 │   ├── planner.py       groups the changed files into units
 │   ├── risk.py          gives a risk tag to a unit from the index
-│   ├── context.py       fills the token budget of each unit
+│   ├── context.py       fills the token budget of each unit (agent mode off)
 │   ├── instructions.py  finds the rules files of the repository
-│   ├── review.py        one unit, one model call, findings
+│   ├── agent.py         the loop: investigate with tools, then report
+│   ├── tools.py         the seven read-only tools of the reviewer
+│   ├── review.py        one unit, findings
 │   ├── dedup.py         collapses the repeats; applies the caps
 │   ├── security.py      makes a security finding in application code P0
 │   ├── verify.py        checks the most important findings a second time
@@ -158,15 +160,18 @@ flowchart TD
     F --> G[Plan: group the files into units]
     G --> H[Risk: tag each unit from the call graph]
     H --> I{For each unit}
-    I --> J[Collect the context]
-    J --> K[Review the unit]
-    K --> I
-    I --> L[Merge the repeats, apply the caps]
-    L --> M[Make a security finding P0]
-    M --> N[Memory: hide what the team dismissed]
-    N --> O[Verify the most important findings]
-    O --> P[Summary, verdict, cost]
-    P --> Q[Keep the result; close the stream]
+    I --> J[Review the unit: read the diff]
+    J --> K{Enough evidence?}
+    K -- no --> L[Call a tool: read, search, history]
+    L --> K
+    K -- yes --> M[Report the findings]
+    M --> I
+    I --> N[Merge the repeats, apply the caps]
+    N --> O[Make a security finding P0]
+    O --> P[Memory: hide what the team dismissed]
+    P --> Q[Verify the most important findings]
+    Q --> R[Summary, verdict, cost]
+    R --> S[Keep the result; close the stream]
 ```
 
 `pipeline/runner.py` holds this sequence. Each step writes into one `ReviewState` object. The last step reads all of it.
@@ -288,7 +293,17 @@ The summary of each review shows the files that Beagle did not read.
 
 The embedding step is separate from the parse step. A block gets a vector later. If the embedding service does not answer, the index is still correct. The review loses only the "similar code" part of the context. `doctor` reports this condition.
 
-### The context of a unit
+### How the reviewer gets its context
+
+The reviewer investigates. `pipeline/agent.py` gives it the diff and seven tools from `pipeline/tools.py`: `read_file`, `read_symbol`, `find_callers`, `find_callees`, `search_code`, `grep` and `git_history`. The model decides what to read and when it has read enough. Then it calls `report_findings`, which ends the loop.
+
+A tool gives data. A tool never gives an opinion. The judgment stays with the model, so each tool result is evidence. Beagle keeps the sequence of the calls with the finding. The pull request shows it in a folded block.
+
+`review.max_steps` limits the tool calls of one unit and `review.max_input_tokens` limits its input. At either limit Beagle makes the model report what it has. Each tool call goes to the stream as an `investigation_step` line, so you see the work while it happens.
+
+The same conversation is the context for the second check, so the verifier reads what the reviewer read.
+
+### The context of a unit, with agent mode off
 
 `pipeline/context.py` fills the token budget of one unit in this sequence:
 

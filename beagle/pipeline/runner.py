@@ -35,6 +35,7 @@ from .review import UnitReviewer
 from .risk import RiskTagger
 from .security import SecurityClassifier
 from .summary import Summariser
+from .tools import Toolbox
 from .verify import Verifier
 from .xref import CrossReferences
 
@@ -123,15 +124,12 @@ class ReviewRunner:
         per_unit = self.per_unit_budget(state.units)
         for unit in state.units:
             state.events.emit("unit_started", unit=unit.key, title=unit.title, files=unit.paths)
-            context = self.context_builder.build(unit, state.diffs, per_unit, state.head_sha)
-            state.contexts[unit.key] = context.render()
-            if self.embedder is not None and not context.rag_available:
-                state.degraded.append("retrieval unavailable")
             reused_before = state.budget.reused
             try:
-                findings, anomalies = self.reviewer.review(
-                    unit, context, prefix, state.review_id, state.budget
-                )
+                if self.config.review.agent_mode:
+                    findings, anomalies = self.investigate(state, unit, prefix)
+                else:
+                    findings, anomalies = self.read_context(state, unit, prefix, per_unit)
             except BudgetExceeded:
                 state.degraded.append(
                     f"stopped after {state.covered} of {len(state.units)} units (budget)"
@@ -144,6 +142,44 @@ class ReviewRunner:
                 "unit_complete", unit=unit.key, findings=len(findings),
                 reused=state.budget.reused > reused_before,
             )
+
+    def investigate(
+        self, state: ReviewState, unit: ReviewUnit, prefix: list[dict]
+    ) -> tuple[list[Finding], list[str]]:
+        """The reviewer reads the repository itself, and its trail is the context."""
+        toolbox = Toolbox(self.mirror, self.store, state.head_sha, self.embedder, unit.paths)
+
+        def announce(step) -> None:
+            state.events.emit(
+                "investigation_step",
+                unit=unit.key,
+                tool=step.tool,
+                query=step.query,
+                result=step.brief(),
+            )
+
+        findings, anomalies, trail = self.reviewer.investigate(
+            unit,
+            unit_diff_text(state.diffs, unit),
+            toolbox,
+            prefix,
+            state.review_id,
+            state.budget,
+            announce,
+        )
+        state.contexts[unit.key] = trail.transcript()
+        if trail.stopped:
+            state.degraded.append(f"{unit.key} stopped at {trail.stopped}")
+        return findings, anomalies
+
+    def read_context(
+        self, state: ReviewState, unit: ReviewUnit, prefix: list[dict], per_unit: int
+    ) -> tuple[list[Finding], list[str]]:
+        context = self.context_builder.build(unit, state.diffs, per_unit, state.head_sha)
+        state.contexts[unit.key] = context.render()
+        if self.embedder is not None and not context.rag_available:
+            state.degraded.append("retrieval unavailable")
+        return self.reviewer.review(unit, context, prefix, state.review_id, state.budget)
 
     def finalize(self, state: ReviewState) -> ReviewResult:
         events, review_id = state.events, state.review_id
@@ -307,6 +343,10 @@ def demote_advice(finding: Finding) -> Finding:
     if finding.category == "test_gap" and finding.severity.at_least(Severity.P4):
         finding.severity = Severity.P4
     return finding
+
+
+def unit_diff_text(diffs: list[FileDiff], unit: ReviewUnit) -> str:
+    return "\n\n".join(item.render() for item in diffs if item.path in unit.paths)
 
 
 def digest(diffs: list[FileDiff]) -> str:

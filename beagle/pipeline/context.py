@@ -161,12 +161,7 @@ class ContextBuilder:
         }
 
     def body_of(self, symbol: dict) -> str | None:
-        rows = self.store.core.query(
-            "select body from chunks where symbol_id = ? limit 1", (symbol["id"],)
-        )
-        if not rows:
-            return None
-        body = rows[0][0]
+        body = self.store.symbol_body(symbol["id"])
         return body[:BODY_LIMIT_CHARS] if body else None
 
     def similar_context(

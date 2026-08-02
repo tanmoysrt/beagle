@@ -3,6 +3,9 @@ from pathlib import Path
 SCHEMA_VERSION = 1  # bumped on breaking NDJSON/API changes
 PROMPT_SET_VERSION = "v1"
 
+# The most review units one change is split into.
+MAX_UNITS = 6
+
 # Per-level caps enforced by the merge pass. Not configurable by design.
 P5_CAP = 1
 P4_CAP = 2
