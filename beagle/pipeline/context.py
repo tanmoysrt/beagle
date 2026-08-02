@@ -149,7 +149,9 @@ class ContextBuilder:
         if budget_tokens <= 0:
             return "", 0, ["call-graph neighbours"]
 
-        related = self.collect_related(unit_diffs) + self.called_by_new_code(unit_diffs, diffs)
+        # what the new code calls comes first: the slice below is what fits, and a
+        # name this change actually calls beats an arbitrary neighbour
+        related = self.called_by_new_code(unit_diffs, diffs) + self.collect_related(unit_diffs)
         signatures, bodies, skipped = [], [], []
         used = 0
 
