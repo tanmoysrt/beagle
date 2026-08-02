@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from ..config import ReviewCfg, Severity
 from ..constants import P3_CAP, P4_CAP, P5_CAP
 from ..llm.client import Budget, LLMClient
@@ -7,6 +9,8 @@ from ..prompts.loader import PromptSet, dedup_values
 from .models import Finding, normalize
 from .review import clamp, coerce_severity, read_locations
 from .schemas import OUTPUT_INSTRUCTIONS, read_entries, report_findings_schema
+
+log = logging.getLogger("beagle.pipeline.dedup")
 
 
 class Merger:
@@ -26,15 +30,16 @@ class Merger:
     def merge(
         self, findings: list[Finding], review_id: str, budget: Budget | None = None
     ) -> tuple[list[Finding], int]:
-        serious = collapse_identical([item for item in findings if grave(item)])
-        ordinary = collapse_identical([item for item in findings if not grave(item)])
+        before = collapse_identical(findings)
+        after = self.model_merge(before, review_id, budget) if len(before) > 1 else None
+        merged = restore_lost(after, before) if after else before
 
-        if len(ordinary) > 1:
-            ordinary = self.model_merge(ordinary, review_id, budget) or ordinary
-
-        ordinary = [item for item in ordinary if item.severity.at_least(self.cfg.min_severity)]
-        ordinary = apply_level_caps(ordinary)
-        kept, overflow = apply_total_cap(ordinary, self.cfg.max_findings)
+        serious = [item for item in merged if grave(item)]
+        ordinary = [
+            item for item in merged
+            if not grave(item) and item.severity.at_least(self.cfg.min_severity)
+        ]
+        kept, overflow = apply_total_cap(apply_level_caps(ordinary), self.cfg.max_findings)
         return serious + kept, overflow
 
     def model_merge(
@@ -87,8 +92,32 @@ class Merger:
 
 
 def grave(finding: Finding) -> bool:
-    """What the small model may not touch."""
+    """What the merge may join but never drop."""
     return finding.is_security or finding.severity.at_least(Severity.P1)
+
+
+def restore_lost(merged: list[Finding], before: list[Finding]) -> list[Finding]:
+    """Joining two serious findings is useful. Losing one is not.
+
+    A merged finding lists every place it covers, so a grave finding counts as
+    kept when the answer names one of its locations. Anything else comes back.
+    """
+    places = {
+        (location.file, location.line_start)
+        for finding in merged
+        for location in finding.locations
+    }
+    kept = {finding.fingerprint for finding in merged}
+    lost = [
+        finding
+        for finding in before
+        if grave(finding)
+        and finding.fingerprint not in kept
+        and not any((item.file, item.line_start) in places for item in finding.locations)
+    ]
+    if lost:
+        log.info("the merge dropped %d serious finding(s); putting them back", len(lost))
+    return merged + lost
 
 
 def collapse_identical(findings: list[Finding]) -> list[Finding]:

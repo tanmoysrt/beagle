@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from ..index.embedder import ChunkEmbedder
@@ -12,6 +13,14 @@ CHARS_PER_TOKEN = 4
 RAG_RESULTS = 10
 MAX_NEIGHBOURS = 24
 BODY_LIMIT_CHARS = 1800
+MAX_CALLED = 8
+# A name the added lines call. New code is not in the index, so it has no edges
+# and the call graph cannot reach what it uses.
+CALL_SITE = re.compile(r"(?:self\.)?([A-Za-z_]\w{3,})\s*\(")
+NOT_A_CALL = {"print", "super", "range", "len", "str", "int", "list", "dict", "set",
+              "tuple", "bool", "float", "isinstance", "getattr", "setattr", "hasattr",
+              "return", "assert", "raise", "yield", "await", "if", "for", "while",
+              "with", "except", "self", "format", "join", "append", "get", "type"}
 
 
 @dataclass
@@ -138,7 +147,7 @@ class ContextBuilder:
         if budget_tokens <= 0:
             return "", 0, ["call-graph neighbours"]
 
-        related = self.collect_related(diffs)
+        related = self.collect_related(diffs) + self.called_by_new_code(diffs)
         signatures, bodies, skipped = [], [], []
         used = 0
 
@@ -165,6 +174,25 @@ class ContextBuilder:
         if bodies:
             text += "\n\n" + "\n\n".join(bodies)
         return text, used, skipped
+
+    def called_by_new_code(self, diffs: list[FileDiff]) -> list[dict]:
+        """What the added lines call, looked up by name.
+
+        A method added in this change is not in the index, so it has no edges.
+        Its body still names the code it depends on, and that code is indexed.
+        """
+        names: set[str] = set()
+        for file_diff in diffs:
+            for _, text in file_diff.added_lines:
+                names.update(CALL_SITE.findall(text))
+        names -= NOT_A_CALL
+        entries = []
+        for name in sorted(names):
+            for symbol in self.store.symbols_named(name, limit=1):
+                entries.append(self.entry(symbol, f"called by the new code ({name})"))
+            if len(entries) >= MAX_CALLED:
+                break
+        return entries
 
     def collect_related(self, diffs: list[FileDiff]) -> list[dict]:
         seen, related = set(), []
