@@ -170,12 +170,25 @@ def verdict_for(findings: list[Finding], fail_on: Severity) -> str:
     return "comment" if findings else "approve"
 
 
-SCORE_FLOOR = {Severity.P0: 1, Severity.P1: 2, Severity.P2: 3, Severity.P3: 4}
+# Is this safe to merge? 5 means nothing was found, and 4 still means yes.
+SCORE_FLOOR = {
+    Severity.P0: 1,  # do not merge
+    Severity.P1: 2,  # fix first
+    Severity.P2: 3,  # merge, then fix soon
+    Severity.P3: 4,  # merge
+    Severity.P4: 4,
+    Severity.P5: 4,
+}
 
 
 def score_for(findings: list[Finding], coverage: float) -> int:
-    """How safe this looks, out of 5. The worst finding sets the ceiling."""
-    score = min([SCORE_FLOOR.get(item.severity, 5) for item in findings], default=5)
+    """How safe this looks, out of 5. The worst finding sets the ceiling.
+
+    Only a clean diff scores 5, so a nit is not the same answer as nothing.
+    """
+    if not findings:
+        return 5 if coverage >= 0.8 else 4
+    score = min(SCORE_FLOOR[item.severity] for item in findings)
     if sum(1 for item in findings if item.severity is Severity.P2) > 1:
         score = min(score, 3)
     if coverage < 0.8:
