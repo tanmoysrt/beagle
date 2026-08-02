@@ -61,7 +61,7 @@ class ReviewPoster:
     @property
     def model(self) -> str:
         """The model that read the code, so a reader knows what judged it."""
-        return self.service.config.llm.models.reasoning
+        return self.service.config.llm.reasoning.model
 
     def post(
         self, number: int, head_sha: str, result: ReviewResult, last_verdict: str | None = None

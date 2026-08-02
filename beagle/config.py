@@ -5,12 +5,21 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from .constants import DEFAULT_CONFIG_PATH
 from .errors import ConfigError
 
 SECRET_KEYS = ("api_key", "token", "webhook_secret", "auth_tokens")
+# Free-form tables: one setting each, not one setting for every key inside.
+FREE_FORM = {"headers", "extra_body"}
 
 
 class Severity(StrEnum):
@@ -47,26 +56,49 @@ class RepoCfg(Section):
     ignore: list[str] = Field(default_factory=list)
 
 
-class LLMModels(Section):
-    """Two models. `reasoning` reviews what is risky and settles what is disputed;
-    `general` does every other call, and still has to reason."""
+class TierCfg(Section):
+    """One model, and the request fields that belong to it alone.
 
-    reasoning: str = "claude-sonnet-5"
-    general: str = "claude-haiku-4-5"
+    The two tiers are rarely the same vendor, so a field that pins one of them
+    to a provider is wrong for the other.
+    """
+
+    model: str
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMCfg(Section):
+    """Two models. `reasoning` reviews what is risky and settles what is disputed;
+    `general` does every other call, and still has to reason."""
+
     base_url: str = "https://api.anthropic.com"
     api_key: str
     # A gateway that serves several vendors often translates every field except
     # tools, and the reviewer is nothing without tools. Name the dialect.
     api: Literal["anthropic", "openai"] = "anthropic"
     headers: dict[str, str] = Field(default_factory=dict)
-    # Fields the service understands and Beagle does not, sent with every
-    # request. A gateway that spreads a conversation over several providers
-    # loses the cache on each move, and this is where you pin it to one.
+    # Fields the service understands and Beagle does not, sent with every call.
     extra_body: dict[str, Any] = Field(default_factory=dict)
-    models: LLMModels = Field(default_factory=LLMModels)
+    reasoning: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-sonnet-5"))
+    general: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-haiku-4-5"))
+
+    @model_validator(mode="before")
+    @classmethod
+    def moved_from_models(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "models" in data:
+            raise ValueError(
+                "llm.models has moved. Write [llm.reasoning] with model = \"...\" and "
+                "[llm.general] with model = \"...\", so each model can carry its own "
+                "extra_body"
+            )
+        return data
+
+    def tier(self, name: str) -> TierCfg:
+        return self.reasoning if name == "reasoning" else self.general
+
+    def body_for(self, name: str) -> dict[str, Any]:
+        """What one tier sends: the shared fields, with its own on top."""
+        return {**self.extra_body, **self.tier(name).extra_body}
 
 
 class EmbeddingsCfg(Section):
@@ -215,8 +247,7 @@ def walk_keys(raw: dict[str, Any], prefix: str = "") -> list[str]:
     keys = []
     for key, value in raw.items():
         dotted = f"{prefix}{key}"
-        # headers is free-form, so it counts as one setting rather than many
-        if isinstance(value, dict) and key != "headers":
+        if isinstance(value, dict) and key not in FREE_FORM:
             keys.extend(walk_keys(value, f"{dotted}."))
         else:
             keys.append(dotted)
@@ -227,7 +258,7 @@ def walk_values(data: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]
     rows = []
     for key, value in data.items():
         dotted = f"{prefix}{key}"
-        if isinstance(value, dict) and key != "headers":
+        if isinstance(value, dict) and key not in FREE_FORM:
             rows.extend(walk_values(value, f"{dotted}."))
         else:
             rows.append((dotted, value))

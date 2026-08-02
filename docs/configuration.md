@@ -42,8 +42,10 @@ Beagle can read a public repository without a key. For a private repository, use
 | `api` | `"anthropic"` | The format of the requests. Use `"openai"` for a service that speaks `/v1/chat/completions`. |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
 | `extra_body` | `{}` | More fields for the request body. Beagle sends them and does not read them. |
-| `models.reasoning` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
-| `models.general` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
+| `reasoning.model` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
+| `general.model` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
+| `reasoning.extra_body` | `{}` | Request fields for that model alone. They win over `llm.extra_body`. |
+| `general.extra_body` | `{}` | The same, for the other model |
 
 The service must accept tool use. With `api = "anthropic"` it must accept the Anthropic message format at `/v1/messages`. With `api = "openai"` it must accept the OpenAI format at `/v1/chat/completions`.
 
@@ -55,10 +57,12 @@ In one measurement, 10 percent of the turns went to a provider with no cache. Th
 
 There is a second reason to hold one provider. On OpenRouter, 19 providers serve `z-ai/glm-5.2`, some at fp4 and some at fp8. Two turns of one review can go to two providers with different arithmetic. Then the reviewer is not one reader of the code, and a repeated review is not a repeated measurement.
 
-Use `extra_body` to hold the review on one provider:
+Use `extra_body` to hold the review on one provider. Set it on the model, not on the whole `[llm]` section. The two models are rarely the same vendor. A provider that serves one of them does not serve the other:
 
 ```toml
-[llm.extra_body.provider]
+[llm.reasoning]
+model = "z-ai/glm-5.2"
+[llm.reasoning.extra_body.provider]
 order = ["z-ai"]
 allow_fallbacks = false
 quantizations = ["fp8"]
@@ -90,9 +94,10 @@ Any gateway with tool use works, so you can use an open model:
 [llm]
 base_url = "https://openrouter.ai/api"
 api_key = "PASTE-OPENROUTER-KEY"
-[llm.models]
-reasoning = "z-ai/glm-5.2"
-general = "deepseek/deepseek-v4-flash-0731"
+[llm.reasoning]
+model = "z-ai/glm-5.2"
+[llm.general]
+model = "deepseek/deepseek-v4-flash-0731"
 ```
 
 ```toml
@@ -100,9 +105,10 @@ general = "deepseek/deepseek-v4-flash-0731"
 base_url = "https://opencode.ai/zen"
 api_key = "PASTE-OPENCODE-KEY"
 api = "openai"
-[llm.models]
-reasoning = "glm-5.2"
-general = "deepseek-v4-flash"
+[llm.reasoning]
+model = "glm-5.2"
+[llm.general]
+model = "deepseek-v4-flash"
 ```
 
 Do not use `moonshotai/kimi-k2.7-code`: it cannot turn reasoning off, so it uses the whole token budget on thought and returns no findings. Do not use `qwen/qwen3-coder-plus`: it returns an empty list for each request.

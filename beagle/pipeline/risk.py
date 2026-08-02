@@ -9,13 +9,17 @@ from .models import ReviewUnit
 BLAST_RADIUS_CALLERS = 8
 REACH_DEPTH = 2
 
+# Substrings, so each token has to be one that does not appear inside an
+# ordinary word: `acl` is in `oracle`, `hash` is in `content_hash`, and `async`
+# is in every second name in an async codebase. A tag that is always on is a
+# tag the reviewer learns to ignore.
 SENSITIVE = {
-    "auth": r"auth|login|signin|permission|authoriz|access_control|rbac|acl",
+    "auth": r"auth|login|signin|permission|authoriz|access_control|rbac|\bacl\b|_acl",
     "session": r"session|cookie|jwt|refresh_token|bearer",
-    "crypto": r"crypt|cipher|hash|hmac|signature|nonce|salt|pbkdf|bcrypt|argon",
+    "crypto": r"crypt|cipher|hmac|_hash\b|password|signature|nonce|salt|pbkdf|bcrypt|argon",
     "payments": r"payment|charge|refund|invoice|billing|subscription|stripe|checkout",
     "data_loss": r"\bdelete|\bdrop_|truncate|purge|wipe|destroy",
-    "concurrency": r"thread|lock|mutex|semaphore|async|await|goroutine|concurren|atomic",
+    "concurrency": r"thread|mutex|semaphore|goroutine|concurren|atomic|\block\b|_lock|lock_",
 }
 PATTERNS = {tag: re.compile(pattern, re.I) for tag, pattern in SENSITIVE.items()}
 
@@ -34,13 +38,16 @@ class RiskTagger:
         self.store = store
 
     def tag(self, unit: ReviewUnit) -> RiskReport:
-        names, reached = self.reach(unit.paths)
+        """A tag means the change touches the subject, not that something two
+        hops away mentions it. The reach is counted, never matched: everything
+        is within two hops of everything, so matching it tags every unit with
+        every tag, and a tag that is always on says nothing."""
+        _, reached = self.reach(unit.paths)
         evidence: dict[str, str] = {}
-        # the change itself is better evidence than something two hops away
-        ordered = list(unit.paths) + sorted(names - set(unit.paths))
+        own = self.own_names(unit.paths)
 
         for tag, pattern in PATTERNS.items():
-            hit = next((name for name in ordered if pattern.search(name)), None)
+            hit = next((name for name in own if pattern.search(name)), None)
             if hit:
                 evidence[tag] = hit
 
@@ -48,6 +55,16 @@ class RiskTagger:
             evidence["blast_radius"] = f"{reached} symbols depend on this change"
 
         return RiskReport(sorted(evidence), reached, evidence)
+
+    def own_names(self, paths: list[str]) -> list[str]:
+        """The paths the change touches, and the symbols declared in them."""
+        names = list(paths)
+        for path in paths:
+            names.extend(
+                symbol["qualified_name"] or symbol["name"]
+                for symbol in self.store.symbols_in_file(path)
+            )
+        return names
 
     def reach(self, paths: list[str]) -> tuple[set[str], int]:
         """Names within a couple of call-graph hops of the change."""

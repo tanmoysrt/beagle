@@ -17,10 +17,18 @@ api_key = "PASTE-OPENROUTER-KEY"
 # the summary, and a reply to a comment. Both have to reason.
 # This pair costs about one sixth of claude-sonnet-5 with claude-haiku-4-5.
 # It finds fewer problems. Refer to docs/configuration.md for the measurement.
-# Leave this section out and Beagle uses claude-sonnet-5 and claude-haiku-4-5.
-[llm.models]
-reasoning = "z-ai/glm-5.2"
-general = "deepseek/deepseek-v4-flash-0731"
+# Leave these sections out and Beagle uses claude-sonnet-5 and claude-haiku-4-5.
+[llm.reasoning]
+model = "z-ai/glm-5.2"
+# The reviewer sends its conversation again on each turn. One provider reads
+# it from the cache; a second provider reads it again at full price.
+[llm.reasoning.extra_body.provider]
+order = ["z-ai"]
+allow_fallbacks = false
+quantizations = ["fp8"]
+
+[llm.general]
+model = "deepseek/deepseek-v4-flash-0731"
 
 [embeddings]
 base_url = "https://openrouter.ai/api/v1"

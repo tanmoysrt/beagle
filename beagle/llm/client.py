@@ -121,7 +121,7 @@ class LLMClient:
         ).messages
 
     def model_for(self, tier: str) -> str:
-        return getattr(self.cfg.models, tier)
+        return self.cfg.tier(tier).model
 
     def structured(
         self,
@@ -184,8 +184,9 @@ class LLMClient:
         }
         if force_tool:
             request["tool_choice"] = {"type": "tool", "name": force_tool}
-        if self.cfg.extra_body:
-            request["extra_body"] = dict(self.cfg.extra_body)
+        extra = self.cfg.body_for(tier)
+        if extra:
+            request["extra_body"] = extra
         reply = self.send(
             request, prompt_name, review_id, unit, reuse=budget is None or budget.reuse
         )
