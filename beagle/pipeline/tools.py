@@ -14,8 +14,7 @@ RESULT_LIMIT = 20000
 GREP_CONTEXT = 2
 GREP_LINE_LIMIT = 160
 
-# `git grep -C` separates a match with a colon and a context line with a dash.
-# The path may hold dashes too, so the line number is what anchors the match.
+# `git grep -C` marks a match with a colon and a context line with a dash.
 GREP_ROW = re.compile(r"^(?P<path>.+?)(?P<sep>[:-])(?P<line>\d+)[:-](?P<text>.*)$")
 SYMBOL_MATCHES = 3
 BODY_LIMIT_CHARS = 4000
@@ -138,8 +137,8 @@ TOOL_NAMES = {spec["name"] for spec in TOOL_SPECS}
 class Toolbox:
     """The repository as read-only calls the reviewer makes for itself.
 
-    A tool returns what it found and never says what it means. The judgment
-    stays with the model, so a tool result is evidence rather than an opinion.
+    A tool returns what it found and never what it means; the judgment is the
+    model's, so a result is evidence rather than an opinion.
     """
 
     def __init__(
@@ -241,7 +240,6 @@ class Toolbox:
         context_lines: int = GREP_CONTEXT,
         max_results: int = 20,
     ) -> str:
-        """A hit and the lines around it, so the next read can be a narrow one."""
         if not self.head_sha:
             return "the reviewed commit is not available, so the tree cannot be searched"
         around = max(0, min(context_lines, 10))
@@ -274,8 +272,7 @@ class Toolbox:
         lines = []
         if looks_like_path(path_or_symbol):
             lines = self.log(["--follow", self.head_sha, "--", path_or_symbol], count)
-        # A name that reads like a path is still only a guess, so a search for
-        # the text is the second try rather than a dead end.
+        # a name that reads like a path is still only a guess
         return self.listing(
             lines or self.log(["-S", path_or_symbol, self.head_sha], count),
             f"no commit touched {path_or_symbol}",

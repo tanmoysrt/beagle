@@ -56,12 +56,7 @@ class Message:
 
 
 class OpenAIMessages:
-    """Talks to an OpenAI-compatible service, and answers like the Anthropic one.
-
-    A gateway that serves several vendors often translates everything except
-    tools, so the request is built in the OpenAI shape here rather than sent in
-    the Anthropic shape and hoped for.
-    """
+    """Talks to an OpenAI-compatible service, and answers like the Anthropic one."""
 
     def __init__(
         self,
@@ -80,11 +75,7 @@ class OpenAIMessages:
         )
 
     def create(self, **request: Any) -> Message:
-        """A gateway that answers 500 once will often answer the same call.
-
-        One lost turn costs a whole unit of review, because the conversation
-        cannot go on without it, so a passing fault is worth waiting out.
-        """
+        """One lost turn costs a whole unit, so a passing fault is waited out."""
         body = to_openai(request)
         for attempt in range(self.max_retries + 1):
             response = self.client.post(self.url, json=body)

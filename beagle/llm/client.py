@@ -325,10 +325,9 @@ class LLMClient:
 
 
 def keep_blocks(blocks) -> list[dict[str, Any]]:
-    """Only what can go back to the service: what it said and what it called.
+    """Only what can go back to the service: the text and the tool calls.
 
-    Thinking blocks are dropped. A gateway that returns them will not accept
-    them back, and the loop has to send the whole turn to continue.
+    Thinking blocks are dropped; a gateway that sends them will not take them back.
     """
     kept = []
     for block in blocks:
@@ -370,9 +369,8 @@ def collapse(blocks: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
 
 
 def make_budget(review: ReviewCfg) -> Budget:
-    """An agent review is bounded per unit, so the review-wide token cap has to
-    leave room for every unit to spend its own. Cost and the deadline still
-    stop it; `token_budget` only catches a runaway."""
+    """An agent review is bounded per unit, so the review-wide cap has to leave
+    room for every unit to spend its own. Cost and the deadline still stop it."""
     tokens = review.token_budget
     if review.agent_mode:
         tokens = max(tokens, review.max_input_tokens * MAX_UNITS)

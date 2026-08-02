@@ -13,13 +13,11 @@ from .tools import TOOL_SPECS, Toolbox
 log = logging.getLogger("beagle.pipeline.agent")
 
 REPORT_TOOL = "report_findings"
-# Turns beyond the step budget, for the report itself and for one nudge.
+# Beyond the step budget: the report itself, and one nudge.
 SPARE_TURNS = 3
-# A reasoning model writes its analysis before it picks a tool, and a cut off
-# turn ends with no tool call at all: the tokens are spent and nothing is
-# bought. Room costs nothing until it is used, and one report that runs out of
-# room loses every finding in the unit, so the ceiling is set well clear.
-MAX_TOKENS = 16000
+# Output only. A cut off turn carries no tool call, so the room is never worth
+# saving.
+MAX_TOKENS = 250000
 TRANSCRIPT_RESULT_CHARS = 2000
 BRIEF_CHARS = 120
 
@@ -72,9 +70,8 @@ class Investigation:
 class AgentReviewer:
     """Reviews one unit as a loop: read the diff, investigate, then report.
 
-    The model chooses what to read, so the cost of a unit follows how hard the
-    change is rather than a fixed context budget. The step budget and the input
-    token cap end the loop; a forced report keeps whatever it has by then.
+    The model chooses what to read, so a unit costs what the change deserves.
+    The step budget and the input cap end the loop with a forced report.
     """
 
     def __init__(self, client: LLMClient, prompts, cfg: ReviewCfg):
@@ -123,8 +120,6 @@ class AgentReviewer:
             calls = [call for call in reply.tool_calls if call["name"] != REPORT_TOOL]
             results = self.act_all(calls, toolbox, trail, on_step)
             trail.stopped = self.spent(trail, reply.usage.tokens_in)
-            # A turn cut off before its tool call is a turn wasted, not a
-            # decision to stop. Ask again rather than end the review on it.
             cut_off = not calls and reply.stop_reason == "max_tokens"
             force = bool(trail.stopped) or (not calls and not cut_off)
 

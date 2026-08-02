@@ -9,10 +9,8 @@ from .models import ReviewUnit
 BLAST_RADIUS_CALLERS = 8
 REACH_DEPTH = 2
 
-# Substrings, so each token has to be one that does not appear inside an
-# ordinary word: `acl` is in `oracle`, `hash` is in `content_hash`, and `async`
-# is in every second name in an async codebase. A tag that is always on is a
-# tag the reviewer learns to ignore.
+# Substrings, so no token may appear inside an ordinary word: `acl` is in
+# `oracle`, `hash` is in `content_hash`, `async` is in half an async codebase.
 SENSITIVE = {
     "auth": r"auth|login|signin|permission|authoriz|access_control|rbac|\bacl\b|_acl",
     "session": r"session|cookie|jwt|refresh_token|bearer",
@@ -40,8 +38,7 @@ class RiskTagger:
     def tag(self, unit: ReviewUnit) -> RiskReport:
         """A tag means the change touches the subject, not that something two
         hops away mentions it. The reach is counted, never matched: everything
-        is within two hops of everything, so matching it tags every unit with
-        every tag, and a tag that is always on says nothing."""
+        is within two hops of everything, and a tag that is always on says nothing."""
         _, reached = self.reach(unit.paths)
         evidence: dict[str, str] = {}
         own = self.own_names(unit.paths)

@@ -59,8 +59,8 @@ class RepoCfg(Section):
 class TierCfg(Section):
     """One model, and the request fields that belong to it alone.
 
-    The two tiers are rarely the same vendor, so a field that pins one of them
-    to a provider is wrong for the other.
+    The two tiers are rarely one vendor, so a field that pins one is wrong for
+    the other.
     """
 
     model: str
@@ -73,8 +73,7 @@ class LLMCfg(Section):
 
     base_url: str = "https://api.anthropic.com"
     api_key: str
-    # A gateway that serves several vendors often translates every field except
-    # tools, and the reviewer is nothing without tools. Name the dialect.
+    # some gateways translate every field except the tools
     api: Literal["anthropic", "openai"] = "anthropic"
     headers: dict[str, str] = Field(default_factory=dict)
     # Fields the service understands and Beagle does not, sent with every call.
