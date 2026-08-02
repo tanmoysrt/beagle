@@ -334,10 +334,16 @@ def request_hash(request: dict) -> str:
 
 
 def redact_request(request: dict) -> dict:
-    """Keep the prompt for replay, drop nothing but keep the record bounded."""
+    """Keep the prompt for replay, drop nothing but keep the record bounded.
+
+    Anything that changes the answer belongs here, or a later question about
+    why two reviews disagreed has no evidence to work from.
+    """
     return {
         "model": request["model"],
         "max_tokens": request.get("max_tokens"),
+        "temperature": request.get("temperature"),
+        "extra_body": request.get("extra_body"),
         "system": request.get("system"),
         "messages": request.get("messages"),
         "tool": (request.get("tool_choice") or {}).get("name"),
