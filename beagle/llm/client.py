@@ -184,6 +184,8 @@ class LLMClient:
         }
         if force_tool:
             request["tool_choice"] = {"type": "tool", "name": force_tool}
+        if self.cfg.extra_body:
+            request["extra_body"] = dict(self.cfg.extra_body)
         reply = self.send(
             request, prompt_name, review_id, unit, reuse=budget is None or budget.reuse
         )

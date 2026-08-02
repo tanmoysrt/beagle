@@ -41,12 +41,32 @@ Beagle can read a public repository without a key. For a private repository, use
 | `api_key` | none. You must give a value. | The key |
 | `api` | `"anthropic"` | The format of the requests. Use `"openai"` for a service that speaks `/v1/chat/completions`. |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
+| `extra_body` | `{}` | More fields for the request body. Beagle sends them and does not read them. |
 | `models.reasoning` | `"claude-sonnet-5"` | The model that reviews the code, and that makes the second check of a security or P0 finding |
 | `models.general` | `"claude-haiku-4-5"` | The model for every other call: the plan, the merge, the summary, and a reply to a comment |
 
 The service must accept tool use. With `api = "anthropic"` it must accept the Anthropic message format at `/v1/messages`. With `api = "openai"` it must accept the OpenAI format at `/v1/chat/completions`.
 
-Test tool use before you trust a gateway. Some gateways translate every field except the tools, and they answer a request with tools in prose instead of a tool call. The reviewer is nothing without tool calls, so it fails on every unit. A gateway of this kind needs `api = "openai"`.
+### Keep one review on one provider
+
+The reviewer sends the same conversation again on each turn, and it grows. The service reads almost all of it from its cache. A cached read costs a fraction of the price. This holds only while the same provider answers each turn. A gateway that sends one turn to a different provider reads the whole conversation again at full price.
+
+In one measurement, 10 percent of the turns went to a provider with no cache. Those turns were 76 percent of all the input that Beagle paid full price for.
+
+There is a second reason to hold one provider. On OpenRouter, 19 providers serve `z-ai/glm-5.2`, some at fp4 and some at fp8. Two turns of one review can go to two providers with different arithmetic. Then the reviewer is not one reader of the code, and a repeated review is not a repeated measurement.
+
+Use `extra_body` to hold the review on one provider:
+
+```toml
+[llm.extra_body.provider]
+order = ["z-ai"]
+allow_fallbacks = false
+quantizations = ["fp8"]
+```
+
+To see the effect, compare `tokens_cached` with `tokens_in` in `llm_log.db`. Inside one review the share climbs above 95 percent. A turn near 0 percent is a turn that changed provider.
+
+Test tool use before you trust a gateway. Some gateways translate every field except the tools. They answer a request with tools in prose, and they make no tool call. The reviewer is nothing without tool calls, so it fails on every unit. A gateway of this kind needs `api = "openai"`.
 
 ### Which model to give to `reasoning`
 

@@ -122,6 +122,7 @@ def to_openai(request: dict[str, Any]) -> dict[str, Any]:
     choice = request.get("tool_choice") or {}
     if choice.get("name"):
         body["tool_choice"] = {"type": "function", "function": {"name": choice["name"]}}
+    body.update(request.get("extra_body") or {})
     return body
 
 

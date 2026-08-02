@@ -15,8 +15,11 @@ log = logging.getLogger("beagle.pipeline.agent")
 REPORT_TOOL = "report_findings"
 # Turns beyond the step budget, for the report itself and for one nudge.
 SPARE_TURNS = 3
-STEP_MAX_TOKENS = 3000
-REPORT_MAX_TOKENS = 8000
+# A reasoning model writes its analysis before it picks a tool, and a cut off
+# turn ends with no tool call at all: the tokens are spent and nothing is
+# bought. Room costs nothing until it is used, and one report that runs out of
+# room loses every finding in the unit, so the ceiling is set well clear.
+MAX_TOKENS = 16000
 TRANSCRIPT_RESULT_CHARS = 2000
 BRIEF_CHARS = 120
 
@@ -120,10 +123,15 @@ class AgentReviewer:
             calls = [call for call in reply.tool_calls if call["name"] != REPORT_TOOL]
             results = self.act_all(calls, toolbox, trail, on_step)
             trail.stopped = self.spent(trail, reply.usage.tokens_in)
-            force = bool(trail.stopped) or not calls
+            # A turn cut off before its tool call is a turn wasted, not a
+            # decision to stop. Ask again rather than end the review on it.
+            cut_off = not calls and reply.stop_reason == "max_tokens"
+            force = bool(trail.stopped) or (not calls and not cut_off)
 
             messages.append({"role": "assistant", "content": reply.blocks})
-            messages.append({"role": "user", "content": results + [self.note(trail, force)]})
+            messages.append(
+                {"role": "user", "content": results + [self.note(trail, force, cut_off)]}
+            )
 
         return [], anomalies, trail
 
@@ -141,9 +149,7 @@ class AgentReviewer:
             system=system,
             messages=messages,
             tools=TOOL_SPECS + [self.report_spec()],
-            # The findings need room. A turn that only picks the next tool does
-            # not, and a reasoning model will fill whatever room it is given.
-            max_tokens=REPORT_MAX_TOKENS if force else STEP_MAX_TOKENS,
+            max_tokens=MAX_TOKENS,
             force_tool=REPORT_TOOL if force else None,
             prompt_name="reviewer",
             review_id=review_id,
@@ -172,8 +178,14 @@ class AgentReviewer:
             results.append(tool_result(call, step.result))
         return results
 
-    def note(self, trail: Investigation, force: bool) -> dict:
+    def note(self, trail: Investigation, force: bool, cut_off: bool = False) -> dict:
         """A model that cannot see its budget spends all of it, then reports nothing."""
+        if cut_off:
+            return {
+                "type": "text",
+                "text": "Your last answer stopped before you called a tool. Keep the "
+                "reasoning short and call the tool you need.",
+            }
         if force:
             return {
                 "type": "text",

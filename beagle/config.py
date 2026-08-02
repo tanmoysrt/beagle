@@ -62,6 +62,10 @@ class LLMCfg(Section):
     # tools, and the reviewer is nothing without tools. Name the dialect.
     api: Literal["anthropic", "openai"] = "anthropic"
     headers: dict[str, str] = Field(default_factory=dict)
+    # Fields the service understands and Beagle does not, sent with every
+    # request. A gateway that spreads a conversation over several providers
+    # loses the cache on each move, and this is where you pin it to one.
+    extra_body: dict[str, Any] = Field(default_factory=dict)
     models: LLMModels = Field(default_factory=LLMModels)
 
 
