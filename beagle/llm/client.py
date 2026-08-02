@@ -143,6 +143,8 @@ class LLMClient:
             # then emits an empty tool call. The schema is the place to reason.
             "thinking": {"type": "disabled"},
         }
+        if self.cfg.temperature is not None:
+            request["temperature"] = self.cfg.temperature
         extra = self.cfg.tier(tier).extra_body
         if extra:
             request["extra_body"] = dict(extra)

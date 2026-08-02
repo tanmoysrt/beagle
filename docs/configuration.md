@@ -39,6 +39,7 @@ Beagle can read a public repository without a key. For a private repository, use
 | --- | --- | --- |
 | `base_url` | `"https://api.anthropic.com"` | The address of the model service |
 | `api_key` | none. You must give a value. | The key |
+| `temperature` | none | Beagle sends this with each call. Leave it out and the service decides, so two reviews of one change disagree. Use `0.0` to make a review repeat. |
 | `headers` | `{}` | More headers. Beagle adds these headers to each request. |
 | `reasoning.model` | `"claude-sonnet-5"` | Every judgment about the code: the units, the review, the merge and the second check |
 | `general.model` | `"claude-haiku-4-5"` | The summary, and reading a comment from a person. The answer there is words, not a decision. |

@@ -11,6 +11,8 @@ ignore = []
 [llm]
 base_url = "https://openrouter.ai/api"
 api_key = "PASTE-OPENROUTER-KEY"
+# leave this out and two reviews of one change disagree
+temperature = 0.0
 [llm.headers]
 
 # Two models. `reasoning` reads the code. `general` does the plan, the merge,
@@ -33,6 +35,8 @@ model = "deepseek/deepseek-v4-flash-0731"
 [embeddings]
 base_url = "https://openrouter.ai/api/v1"
 api_key = "PASTE-OPENROUTER-KEY"
+# leave this out and two reviews of one change disagree
+temperature = 0.0
 model = "text-embedding-3-large"
 dims = 1024
 batch_size = 128

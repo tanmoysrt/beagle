@@ -70,6 +70,9 @@ class LLMCfg(Section):
 
     base_url: str = "https://api.anthropic.com"
     api_key: str
+    # Left unset, the service picks, and two reviews of one diff disagree. On
+    # nine runs of one change the same defect scored 0.15, 0.3, 0.35 and 0.4.
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     headers: dict[str, str] = Field(default_factory=dict)
     reasoning: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-sonnet-5"))
     general: TierCfg = Field(default_factory=lambda: TierCfg(model="claude-haiku-4-5"))
